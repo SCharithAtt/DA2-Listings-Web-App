@@ -1,11 +1,14 @@
 from typing import List, Optional
 from bson import ObjectId
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks
 
 from app.db.mongo import get_db
 from app.models.listing import ListingCreate, ListingUpdate, ListingOut
 from app.routes.auth import get_current_user_id
 from app.utils.mongo_helpers import normalize_id
+from app.utils.settings import settings
+from app.utils.embeddings import embed_text
+import math
 
 
 router = APIRouter()
@@ -18,19 +21,38 @@ def _to_object_id(id_str: str) -> ObjectId:
         raise HTTPException(status_code=400, detail="Invalid id")
 
 
+def _listing_corpus(doc: dict) -> str:
+    parts = [
+        doc.get("title") or "",
+        doc.get("description") or "",
+        " ".join(doc.get("tags") or []),
+        doc.get("city") or "",
+    ]
+    return " | ".join([p for p in parts if p])
+
+
 @router.post("/", response_model=ListingOut)
-async def create_listing(payload: ListingCreate, user_id: str = Depends(get_current_user_id), db=Depends(get_db)):
+async def create_listing(payload: ListingCreate, user_id: str = Depends(get_current_user_id), db=Depends(get_db), background: BackgroundTasks = None):
     doc = {
         "title": payload.title,
         "description": payload.description,
         "price": payload.price,
         "tags": payload.tags,
         "city": payload.city,
-        "features": payload.features,
+    "features": payload.features,
+    "category": payload.category,
         "userId": user_id,
         "location": {"type": "Point", "coordinates": [payload.lng, payload.lat]},
     }
     res = await db.listings.insert_one(doc)
+    # Background embedding compute if enabled
+    if settings.enable_semantic_search and background is not None:
+        async def _compute_and_save(listing_id):
+            fresh = await db.listings.find_one({"_id": listing_id})
+            vec = embed_text(_listing_corpus(fresh or {}))
+            await db.listings.update_one({"_id": listing_id}, {"$set": {"embedding": vec}})
+
+        background.add_task(_compute_and_save, res.inserted_id)
     created = await db.listings.find_one({"_id": res.inserted_id})
     return normalize_id(created)
 
@@ -44,7 +66,7 @@ async def get_listing(listing_id: str, db=Depends(get_db)):
 
 
 @router.put("/{listing_id}", response_model=ListingOut)
-async def update_listing(listing_id: str, payload: ListingUpdate, user_id: str = Depends(get_current_user_id), db=Depends(get_db)):
+async def update_listing(listing_id: str, payload: ListingUpdate, user_id: str = Depends(get_current_user_id), db=Depends(get_db), background: BackgroundTasks = None):
     oid = _to_object_id(listing_id)
     doc = await db.listings.find_one({"_id": oid})
     if not doc:
@@ -53,7 +75,7 @@ async def update_listing(listing_id: str, payload: ListingUpdate, user_id: str =
         raise HTTPException(status_code=403, detail="Not authorized")
 
     update = {}
-    for field in ["title", "description", "price", "tags", "city", "features"]:
+    for field in ["title", "description", "price", "tags", "city", "category", "features"]:
         val = getattr(payload, field)
         if val is not None:
             update[field] = val
@@ -62,6 +84,13 @@ async def update_listing(listing_id: str, payload: ListingUpdate, user_id: str =
     if not update:
         return normalize_id(doc)
     await db.listings.update_one({"_id": oid}, {"$set": update})
+    if settings.enable_semantic_search and background is not None and update:
+        async def _compute_and_save(listing_id):
+            fresh = await db.listings.find_one({"_id": listing_id})
+            vec = embed_text(_listing_corpus(fresh or {}))
+            await db.listings.update_one({"_id": listing_id}, {"$set": {"embedding": vec}})
+
+        background.add_task(_compute_and_save, oid)
     updated = await db.listings.find_one({"_id": oid})
     return normalize_id(updated)
 
@@ -79,8 +108,9 @@ async def delete_listing(listing_id: str, user_id: str = Depends(get_current_use
 
 
 @router.get("/", response_model=List[ListingOut])
-async def list_listings(skip: int = 0, limit: int = 20, db=Depends(get_db)):
-    cursor = db.listings.find({}).skip(skip).limit(min(limit, 100))
+async def list_listings(skip: int = 0, limit: int = 20, category: Optional[str] = None, db=Depends(get_db)):
+    query = {"category": category} if category else {}
+    cursor = db.listings.find(query).skip(skip).limit(min(limit, 100))
     results = []
     async for doc in cursor:
         results.append(normalize_id(doc))
@@ -95,6 +125,7 @@ async def search_listings(
     radius: Optional[float] = Query(default=5000, description="meters"),
     city: Optional[str] = None,
     tags: Optional[str] = Query(default=None, description="comma-separated"),
+    category: Optional[str] = None,
     skip: int = 0,
     limit: int = 20,
     db=Depends(get_db),
@@ -120,6 +151,8 @@ async def search_listings(
         match["city"] = city
     if tags:
         match["tags"] = {"$in": [t.strip() for t in tags.split(",") if t.strip()]}
+    if category:
+        match["category"] = category
     if match:
         pipeline.append({"$match": match})
 
@@ -179,3 +212,49 @@ async def listings_within_radius(lat: float, lng: float, radius: float = 5000, s
     async for doc in cursor:
         results.append(normalize_id(doc))
     return results
+
+
+def _cosine(a, b):
+    dot = sum((x or 0.0) * (y or 0.0) for x, y in zip(a, b))
+    na = math.sqrt(sum((x or 0.0) ** 2 for x in a))
+    nb = math.sqrt(sum((y or 0.0) ** 2 for y in b))
+    return 0.0 if na == 0 or nb == 0 else dot / (na * nb)
+
+
+@router.get("/search/semantic", response_model=List[ListingOut])
+async def semantic_search(
+    q: str = Query(..., min_length=2),
+    city: Optional[str] = None,
+    tags: Optional[str] = None,
+    category: Optional[str] = None,
+    lat: Optional[float] = None,
+    lng: Optional[float] = None,
+    radius: Optional[float] = None,
+    limit: int = 20,
+    db=Depends(get_db),
+):
+    if not settings.enable_semantic_search:
+        raise HTTPException(status_code=400, detail="Semantic search disabled")
+
+    query_vec = embed_text(q)
+    # Base filter: only docs that have embeddings
+    base_filter: dict = {"embedding": {"$type": "array"}}
+    if city:
+        base_filter["city"] = city
+    if tags:
+        base_filter["tags"] = {"$in": [t.strip() for t in tags.split(",") if t.strip()]}
+    if category:
+        base_filter["category"] = category
+    if lat is not None and lng is not None and radius:
+        base_filter["location"] = {
+            "$geoWithin": {"$centerSphere": [[lng, lat], (radius / 1000) / 6378.1]}
+        }
+
+    candidates = []
+    async for d in db.listings.find(base_filter).limit(500):
+        d["_score"] = _cosine(query_vec, d.get("embedding") or [])
+        candidates.append(d)
+    ranked = sorted(candidates, key=lambda x: x.get("_score", 0), reverse=True)[: min(limit, 100)]
+    for d in ranked:
+        d.pop("embedding", None)  # reduce payload
+    return [normalize_id(d) for d in ranked]

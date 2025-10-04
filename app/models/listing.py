@@ -13,6 +13,7 @@ class ListingBase(BaseModel):
     price: float = Field(ge=0)
     tags: List[str] = []
     city: str
+    category: Optional[str] = None
     features: List[str] = []
 
 
@@ -27,6 +28,7 @@ class ListingUpdate(BaseModel):
     price: Optional[float] = Field(default=None, ge=0)
     tags: Optional[List[str]] = None
     city: Optional[str] = None
+    category: Optional[str] = None
     features: Optional[List[str]] = None
     lat: Optional[float] = None
     lng: Optional[float] = None
@@ -39,6 +41,7 @@ class ListingOut(BaseModel):
     price: float
     tags: List[str]
     city: str
+    category: Optional[str] = None
     features: List[str]
     userId: str
     location: GeoPoint

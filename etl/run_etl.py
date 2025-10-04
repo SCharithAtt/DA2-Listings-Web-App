@@ -16,6 +16,13 @@ async def run():
     ]
     per_city_res = [x async for x in db.listings.aggregate(per_city)]
 
+    # Aggregation: listings per category
+    per_category = [
+        {"$group": {"_id": "$category", "count": {"$sum": 1}}},
+        {"$sort": {"count": -1}},
+    ]
+    per_category_res = [x async for x in db.listings.aggregate(per_category)]
+
     # Most common tags (top 20)
     common_tags = [
         {"$unwind": "$tags"},
@@ -36,6 +43,7 @@ async def run():
     summary = {
         "generatedAt": datetime.now(timezone.utc).isoformat(),
         "perCity": per_city_res,
+    "perCategory": per_category_res,
         "commonTags": common_tags_res,
         "dailyNew": daily_new_res,
     }

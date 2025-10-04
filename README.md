@@ -25,6 +25,7 @@ FastAPI + MongoDB backend for a smart listings app with JWT auth, intelligent te
 ├─ main.py
 ├─ requirements.txt
 ├─ .env.example
+├─ frontend/ (React + Vite)
 └─ README.md
 ```
 
@@ -55,6 +56,17 @@ uvicorn main:app --reload --host 0.0.0.0 --port 8000
 
 OpenAPI docs at http://localhost:8000/docs
 
+4) Frontend (React + Vite)
+
+```powershell
+cd frontend
+npm install
+copy .env.example .env
+npm run dev
+```
+
+Open http://localhost:5173
+
 ## Auth
 
 - POST /auth/register { email, password } -> bearer token
@@ -65,12 +77,13 @@ Use the token as `Authorization: Bearer <token>`
 ## Listings
 
 - POST /listings (auth) create listing with title, description, price, tags, city, lat, lng, features
+	- Optional: category
 - GET /listings/{id}
 - PUT /listings/{id} (auth, owner only)
 - DELETE /listings/{id} (auth, owner only)
 - GET /listings (list)
 - GET /listings/nearby?lat=..&lng=..&radius=5000
-- GET /listings/search/advanced?q=..&lat=..&lng=..&radius=..&city=..&tags=tag1,tag2
+- GET /listings/search/advanced?q=..&lat=..&lng=..&radius=..&city=..&tags=tag1,tag2&category=...
 
 Indexes created automatically on startup:
 - Text index: title, description, tags
@@ -81,6 +94,7 @@ Indexes created automatically on startup:
 
 Run periodic ETL to compute:
 - listings per city
+- listings per category
 - most common tags
 - daily new listings
 
@@ -94,5 +108,34 @@ Dashboard endpoint: GET /analytics/summary
 
 - All writes use Pydantic validation and parameterized queries through motor.
 - No external search engines used.
+ 
+## Optional: Semantic search (local cosine)
+
+You can enable a simple semantic search that ranks by cosine similarity of sentence embeddings. It does not require external services and works well for small datasets.
+
+Enable and install:
+
+```powershell
+# backend
+pip install -r requirements.txt
+# set in .env
+ENABLE_SEMANTIC_SEARCH=true
+```
+
+Embeddings generation:
+- New/updated listings: embeddings computed in background and stored in `embedding`.
+- Existing listings: backfill once
+
+```powershell
+python -m etl.backfill_embeddings
+```
+
+Endpoint:
+- GET /listings/search/semantic?q=...&city=...&tags=tag1,tag2&lat=..&lng=..&radius=5000
+
+Notes:
+- Uses sentence-transformers model defined in `EMBEDDING_MODEL` (default MiniLM-L6-v2).
+- Keeps existing keyword/geo search intact; this is additive and feature-flagged.
+ - CORS is enabled for http://localhost:5173 and http://localhost:3000 in `main.py`.
 # DA2-Listings-Web-App
 CB011671

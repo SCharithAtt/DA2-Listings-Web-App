@@ -42,6 +42,8 @@ async def ensure_indexes():
     await db.listings.create_index([("location", "2dsphere")], name="location_2dsphere")
     # userId index
     await db.listings.create_index("userId", name="userId_index")
+    # category index
+    await db.listings.create_index("category", name="category_index")
 
     # Analytics summary timestamp index
     await db.analytics_summary.create_index("generatedAt", name="generatedAt_index")

@@ -8,6 +8,8 @@ class Settings(BaseSettings):
     jwt_secret: str = Field(alias="JWT_SECRET", default="change_me")
     jwt_algorithm: str = Field(alias="JWT_ALGORITHM", default="HS256")
     jwt_expires_minutes: int = Field(alias="JWT_EXPIRES_MINUTES", default=60)
+    enable_semantic_search: bool = Field(alias="ENABLE_SEMANTIC_SEARCH", default=False)
+    embedding_model: str = Field(alias="EMBEDDING_MODEL", default="sentence-transformers/all-MiniLM-L6-v2")
 
     model_config = {
         "env_file": ".env",
