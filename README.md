@@ -84,6 +84,7 @@ Use the token as `Authorization: Bearer <token>`
 - GET /listings (list)
 - GET /listings/nearby?lat=..&lng=..&radius=5000
 - GET /listings/search/advanced?q=..&lat=..&lng=..&radius=..&city=..&tags=tag1,tag2&category=...
+ - POST /listings/{id}/images (auth, owner only) multipart/form-data file field "file"; returns { url }
 
 Indexes created automatically on startup:
 - Text index: title, description, tags
@@ -108,6 +109,8 @@ Dashboard endpoint: GET /analytics/summary
 
 - All writes use Pydantic validation and parameterized queries through motor.
 - No external search engines used.
+ - Local image uploads are saved under `app/listings_images` and served at `/listings/images/...`.
+ - Frontend: listing cards show the first image as a thumbnail when available and provide an Upload image button (requires login; server enforces ownership).
  
 ## Optional: Semantic search (local cosine)
 

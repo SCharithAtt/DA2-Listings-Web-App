@@ -18,8 +18,8 @@ class ListingBase(BaseModel):
 
 
 class ListingCreate(ListingBase):
-    lat: float
-    lng: float
+    lat: float = Field(ge=-90, le=90)
+    lng: float = Field(ge=-180, le=180)
 
 
 class ListingUpdate(BaseModel):
@@ -30,8 +30,8 @@ class ListingUpdate(BaseModel):
     city: Optional[str] = None
     category: Optional[str] = None
     features: Optional[List[str]] = None
-    lat: Optional[float] = None
-    lng: Optional[float] = None
+    lat: Optional[float] = Field(default=None, ge=-90, le=90)
+    lng: Optional[float] = Field(default=None, ge=-180, le=180)
 
 
 class ListingOut(BaseModel):
@@ -46,3 +46,4 @@ class ListingOut(BaseModel):
     userId: str
     location: GeoPoint
     score: Optional[float] = None
+    images: List[str] = []

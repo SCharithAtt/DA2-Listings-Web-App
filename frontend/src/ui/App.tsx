@@ -25,7 +25,7 @@ export const App: React.FC = () => {
 
       <div className="row" style={{marginTop:12}}>
         <div style={{flex:2}} className="card">
-          <Listings apiUrl={apiUrl} authHeader={authHeader} />
+          <Listings apiUrl={apiUrl} authHeader={authHeader} token={token} />
         </div>
         <div style={{flex:1}} className="card">
           <Analytics apiUrl={apiUrl} />

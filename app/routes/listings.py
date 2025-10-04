@@ -1,6 +1,6 @@
 from typing import List, Optional
 from bson import ObjectId
-from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks, UploadFile, File
 
 from app.db.mongo import get_db
 from app.models.listing import ListingCreate, ListingUpdate, ListingOut
@@ -8,6 +8,7 @@ from app.routes.auth import get_current_user_id
 from app.utils.mongo_helpers import normalize_id
 from app.utils.settings import settings
 from app.utils.embeddings import embed_text
+from app.services.storage import save_image
 import math
 
 
@@ -109,8 +110,10 @@ async def delete_listing(listing_id: str, user_id: str = Depends(get_current_use
 
 @router.get("/", response_model=List[ListingOut])
 async def list_listings(skip: int = 0, limit: int = 20, category: Optional[str] = None, db=Depends(get_db)):
+    skip = max(0, skip)
+    limit = max(1, min(limit, 100))
     query = {"category": category} if category else {}
-    cursor = db.listings.find(query).skip(skip).limit(min(limit, 100))
+    cursor = db.listings.find(query).skip(skip).limit(limit)
     results = []
     async for doc in cursor:
         results.append(normalize_id(doc))
@@ -130,6 +133,8 @@ async def search_listings(
     limit: int = 20,
     db=Depends(get_db),
 ):
+    skip = max(0, skip)
+    limit = max(1, min(limit, 100))
     pipeline = []
 
     # Start with geoNear if lat/lng provided to get distance and proximity score.
@@ -188,7 +193,7 @@ async def search_listings(
 
     pipeline.append({"$sort": {"score": -1}})
     pipeline.append({"$skip": skip})
-    pipeline.append({"$limit": min(limit, 100)})
+    pipeline.append({"$limit": limit})
 
     cursor = db.listings.aggregate(pipeline)
     results = []
@@ -199,6 +204,8 @@ async def search_listings(
 
 @router.get("/nearby", response_model=List[ListingOut])
 async def listings_within_radius(lat: float, lng: float, radius: float = 5000, skip: int = 0, limit: int = 20, db=Depends(get_db)):
+    skip = max(0, skip)
+    limit = max(1, min(limit, 100))
     query = {
         "location": {
             "$near": {
@@ -207,7 +214,7 @@ async def listings_within_radius(lat: float, lng: float, radius: float = 5000, s
             }
         }
     }
-    cursor = db.listings.find(query).skip(skip).limit(min(limit, 100))
+    cursor = db.listings.find(query).skip(skip).limit(limit)
     results = []
     async for doc in cursor:
         results.append(normalize_id(doc))
@@ -236,6 +243,7 @@ async def semantic_search(
     if not settings.enable_semantic_search:
         raise HTTPException(status_code=400, detail="Semantic search disabled")
 
+    limit = max(1, min(limit, 100))
     query_vec = embed_text(q)
     # Base filter: only docs that have embeddings
     base_filter: dict = {"embedding": {"$type": "array"}}
@@ -254,7 +262,29 @@ async def semantic_search(
     async for d in db.listings.find(base_filter).limit(500):
         d["_score"] = _cosine(query_vec, d.get("embedding") or [])
         candidates.append(d)
-    ranked = sorted(candidates, key=lambda x: x.get("_score", 0), reverse=True)[: min(limit, 100)]
+    ranked = sorted(candidates, key=lambda x: x.get("_score", 0), reverse=True)[: limit]
     for d in ranked:
         d.pop("embedding", None)  # reduce payload
     return [normalize_id(d) for d in ranked]
+
+
+@router.post("/{listing_id}/images")
+async def upload_listing_image(
+    listing_id: str,
+    file: UploadFile = File(...),
+    user_id: str = Depends(get_current_user_id),
+    db=Depends(get_db),
+):
+    oid = _to_object_id(listing_id)
+    doc = await db.listings.find_one({"_id": oid})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Listing not found")
+    if doc.get("userId") != user_id:
+        raise HTTPException(status_code=403, detail="Not authorized")
+
+    if not (file.content_type or "").startswith("image/"):
+        raise HTTPException(status_code=400, detail="Only image uploads are allowed")
+
+    url = await save_image(file, listing_id)
+    await db.listings.update_one({"_id": oid}, {"$push": {"images": url}})
+    return {"url": url}

@@ -53,10 +53,13 @@ export const Auth: React.FC<{ apiUrl: string; onToken: (t: string|null)=>void }>
   )
 }
 
-export const Listings: React.FC<{ apiUrl: string; authHeader: HeadersInit }>=({ apiUrl, authHeader })=>{
+type ListingsProps = { apiUrl: string; authHeader: HeadersInit; token: string | null }
+export const Listings: React.FC<ListingsProps> = ({ apiUrl, authHeader, token }: ListingsProps)=>{
   const [items, setItems] = useState<any[]>([])
   const [form, setForm] = useState({ title:'', description:'', price: '', tags:'', city:'', category:'', lat:'', lng:'', features:'' })
   const [error, setError] = useState<string | null>(null)
+  const [uploadingId, setUploadingId] = useState<string | null>(null)
+  const [uploadError, setUploadError] = useState<string | null>(null)
 
   const load = async ()=>{
     const res = await fetch(`${apiUrl}/listings`)
@@ -72,7 +75,7 @@ export const Listings: React.FC<{ apiUrl: string; authHeader: HeadersInit }>=({ 
         title: form.title,
         description: form.description,
         price: Number(form.price||0),
-        tags: form.tags? form.tags.split(',').map(t=>t.trim()).filter(Boolean): [],
+  tags: form.tags? form.tags.split(',').map((t: string)=>t.trim()).filter(Boolean): [],
   city: form.city,
   category: form.category || null,
         lat: Number(form.lat),
@@ -85,6 +88,22 @@ export const Listings: React.FC<{ apiUrl: string; authHeader: HeadersInit }>=({ 
   setForm({ title:'', description:'', price:'', tags:'', city:'', category:'', lat:'', lng:'', features:'' })
       load()
     }catch(e:any){ setError(e.message) }
+  }
+
+  const uploadImage = async (listingId: string, file: File)=>{
+    if(!token){ setUploadError('Login required'); return }
+    setUploadError(null)
+    setUploadingId(listingId)
+    try{
+      const fd = new FormData()
+      fd.append('file', file)
+      const res = await fetch(`${apiUrl}/listings/${listingId}/images`, { method:'POST', headers: { ...(authHeader||{}) }, body: fd })
+      const data = await res.json()
+      if(!res.ok) throw new Error(data?.detail || 'Upload failed')
+      // optimistic update: append to images array on the item
+  setItems((prev: any[])=> prev.map((it: any)=> it._id===listingId ? { ...it, images: [...(it.images||[]), data.url] } : it))
+    }catch(e:any){ setUploadError(e.message) }
+    finally{ setUploadingId(null) }
   }
 
   return (
@@ -102,10 +121,10 @@ export const Listings: React.FC<{ apiUrl: string; authHeader: HeadersInit }>=({ 
   <input className="input" placeholder="tags comma-separated" value={form.tags} onChange={(e: ChangeEvent<HTMLInputElement>)=>setForm({...form, tags:e.target.value})} />
       </div>
       <div className="row" style={{marginBottom:8}}>
-        <input className="input" placeholder="features comma-separated" value={form.features} onChange={e=>setForm({...form, features:e.target.value})} />
+        <input className="input" placeholder="features comma-separated" value={form.features} onChange={(e: ChangeEvent<HTMLInputElement>)=>setForm({...form, features:e.target.value})} />
       </div>
       <div className="row" style={{marginBottom:12}}>
-        <input className="input" placeholder="description" value={form.description} onChange={e=>setForm({...form, description:e.target.value})} />
+        <input className="input" placeholder="description" value={form.description} onChange={(e: ChangeEvent<HTMLInputElement>)=>setForm({...form, description:e.target.value})} />
         <button className="btn" onClick={create}>Create (auth)</button>
         {error && <span style={{color:'#b91c1c'}}>{error}</span>}
       </div>
@@ -113,6 +132,9 @@ export const Listings: React.FC<{ apiUrl: string; authHeader: HeadersInit }>=({ 
       <div className="grid">
         {items.map((it)=> (
           <div key={it._id} className="card">
+            {Array.isArray(it.images) && it.images.length>0 && (
+              <img src={`${apiUrl}${it.images[0]}`} alt={it.title} style={{width:'100%', height:160, objectFit:'cover', borderRadius:6, marginBottom:8, background:'#e5f0ff'}} />
+            )}
             <div style={{display:'flex', justifyContent:'space-between'}}>
               <strong>{it.title}</strong>
               <span className="badge">${it.price}</span>
@@ -120,6 +142,19 @@ export const Listings: React.FC<{ apiUrl: string; authHeader: HeadersInit }>=({ 
             <div style={{color:'var(--muted)', margin:'6px 0'}}>{it.city} {it.category && <span className="badge" style={{marginLeft:6}}>{it.category}</span>}</div>
             <div style={{marginBottom:6}}>{(it.tags||[]).map((t:string)=>(<span className="tag" key={t}>{t}</span>))}</div>
             <div style={{fontSize:13}}>{it.description}</div>
+            {/* Owner-only upload control: we don't know the userId on client; allow upload and rely on API 403 if not owner */}
+            {token && (
+              <div style={{marginTop:10}}>
+                <label className="btn" style={{cursor:'pointer'}}>
+                  Upload image
+                  <input type="file" accept="image/*" style={{display:'none'}} onChange={(e)=>{
+                    const f = e.target.files?.[0]; if(f){ uploadImage(it._id, f); e.currentTarget.value=''; }
+                  }} />
+                </label>
+                {uploadingId===it._id && <span className="badge" style={{marginLeft:8}}>uploading...</span>}
+                {uploadError && <div style={{color:'#b91c1c', marginTop:6}}>{uploadError}</div>}
+              </div>
+            )}
           </div>
         ))}
       </div>
@@ -178,6 +213,9 @@ export const Search: React.FC<{ apiUrl: string; authHeader: HeadersInit }>=({ ap
       <div className="grid">
         {items.map((it)=> (
           <div key={it._id} className="card">
+            {Array.isArray(it.images) && it.images.length>0 && (
+              <img src={`${apiUrl}${it.images[0]}`} alt={it.title} style={{width:'100%', height:160, objectFit:'cover', borderRadius:6, marginBottom:8, background:'#e5f0ff'}} />
+            )}
             <div style={{display:'flex', justifyContent:'space-between'}}>
               <strong>{it.title}</strong>
               {typeof it.score === 'number' && <span className="badge">score {it.score.toFixed(2)}</span>}
