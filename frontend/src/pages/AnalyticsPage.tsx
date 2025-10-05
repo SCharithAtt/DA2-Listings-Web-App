@@ -1,0 +1,195 @@
+import React, { useEffect, useState } from 'react'
+import { useAuth } from '../contexts/AuthContext'
+
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+
+interface AnalyticsData {
+  generatedAt: string
+  perCity: Array<{ _id: string; count: number }>
+  perCategory: Array<{ _id: string; count: number }>
+  commonTags: Array<{ _id: string; count: number }>
+  dailyNewListings?: Array<{ _id: string; count: number }>
+}
+
+export const AnalyticsPage: React.FC = () => {
+  const [data, setData] = useState<AnalyticsData | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const { token } = useAuth()
+
+  useEffect(() => {
+    loadAnalytics()
+  }, [])
+
+  const loadAnalytics = async () => {
+    setLoading(true)
+    setError(null)
+
+    try {
+      const res = await fetch(`${API_URL}/analytics/summary`, {
+        headers: token ? {
+          Authorization: `Bearer ${token}`
+        } : {}
+      })
+
+      if (!res.ok) {
+        if (res.status === 403) {
+          throw new Error('Admin access required')
+        }
+        throw new Error('Failed to load analytics')
+      }
+
+      const analyticsData = await res.json()
+      setData(analyticsData)
+    } catch (err: any) {
+      setError(err.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="page">
+        <div className="loading">Loading analytics...</div>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="page">
+        <div className="error-message">{error}</div>
+        <p className="empty-subtitle">
+          {error.includes('Admin') 
+            ? 'Only administrators can access this page.'
+            : 'Make sure the ETL has been run: python -m etl.run_etl'}
+        </p>
+      </div>
+    )
+  }
+
+  if (!data) {
+    return (
+      <div className="page">
+        <div className="empty-state">
+          <p>No analytics data available</p>
+          <p className="empty-subtitle">Run the ETL script to generate analytics data</p>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="page">
+      <h2>Analytics Dashboard</h2>
+      <p className="analytics-timestamp">
+        Generated: {new Date(data.generatedAt).toLocaleString()}
+      </p>
+
+      <div className="analytics-grid">
+        <div className="analytics-card">
+          <h3>Top Cities</h3>
+          <div className="analytics-list">
+            {data.perCity && data.perCity.length > 0 ? (
+              <table className="analytics-table">
+                <thead>
+                  <tr>
+                    <th>City</th>
+                    <th>Count</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.perCity.slice(0, 10).map((item) => (
+                    <tr key={item._id}>
+                      <td>{item._id || 'Unknown'}</td>
+                      <td className="count">{item.count}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : (
+              <p className="empty-subtitle">No data</p>
+            )}
+          </div>
+        </div>
+
+        <div className="analytics-card">
+          <h3>Top Categories</h3>
+          <div className="analytics-list">
+            {data.perCategory && data.perCategory.length > 0 ? (
+              <table className="analytics-table">
+                <thead>
+                  <tr>
+                    <th>Category</th>
+                    <th>Count</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.perCategory.slice(0, 10).map((item) => (
+                    <tr key={item._id || 'none'}>
+                      <td>{item._id ? item._id.replace('_', ' ') : 'Uncategorized'}</td>
+                      <td className="count">{item.count}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : (
+              <p className="empty-subtitle">No data</p>
+            )}
+          </div>
+        </div>
+
+        <div className="analytics-card">
+          <h3>Popular Tags</h3>
+          <div className="analytics-list">
+            {data.commonTags && data.commonTags.length > 0 ? (
+              <table className="analytics-table">
+                <thead>
+                  <tr>
+                    <th>Tag</th>
+                    <th>Count</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.commonTags.slice(0, 10).map((item) => (
+                    <tr key={item._id}>
+                      <td>{item._id}</td>
+                      <td className="count">{item.count}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : (
+              <p className="empty-subtitle">No data</p>
+            )}
+          </div>
+        </div>
+
+        {data.dailyNewListings && data.dailyNewListings.length > 0 && (
+          <div className="analytics-card full-width">
+            <h3>Daily New Listings (Last 7 Days)</h3>
+            <div className="analytics-list">
+              <table className="analytics-table">
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Count</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.dailyNewListings.slice(0, 7).map((item) => (
+                    <tr key={item._id}>
+                      <td>{item._id}</td>
+                      <td className="count">{item.count}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}

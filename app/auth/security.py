@@ -18,8 +18,10 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     return pwd_context.verify(plain_password, hashed_password)
 
 
-def create_access_token(subject: str, expires_minutes: Optional[int] = None) -> str:
+def create_access_token(subject: str, expires_minutes: Optional[int] = None, extra_claims: Optional[dict] = None) -> str:
     to_encode = {"sub": subject, "iat": int(datetime.now(timezone.utc).timestamp())}
+    if extra_claims:
+        to_encode.update(extra_claims)
     expire = datetime.now(timezone.utc) + timedelta(
         minutes=expires_minutes or settings.jwt_expires_minutes
     )

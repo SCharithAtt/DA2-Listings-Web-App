@@ -1,6 +1,6 @@
-# DA2 Smart Listings Web App - Backend
+# DA2 Smart Listings Web App
 
-FastAPI + MongoDB backend for a smart listings app with JWT auth, intelligent text+geo search, geospatial queries, and analytics ETL.
+Full-stack listings application with FastAPI + MongoDB backend and React + TypeScript frontend. Features JWT auth, intelligent semantic search, geospatial queries, and analytics ETL.
 
 ## Project structure
 
@@ -56,16 +56,27 @@ uvicorn main:app --reload --host 0.0.0.0 --port 8000
 
 OpenAPI docs at http://localhost:8000/docs
 
-4) Frontend (React + Vite)
+4) Frontend (React + Vite + TypeScript)
 
 ```powershell
 cd frontend
 npm install
-copy .env.example .env
 npm run dev
 ```
 
 Open http://localhost:5173
+
+### Frontend Features
+- ✅ Multi-page routing (React Router v6)
+- ✅ User authentication with persistent sessions
+- ✅ Create listings with mandatory image upload
+- ✅ Browse and filter by category
+- ✅ Smart semantic search (handles typos)
+- ✅ My Listings management (view/edit/delete)
+- ✅ Admin analytics dashboard
+- ✅ Responsive modern design
+
+See `frontend/README.md` for detailed frontend documentation.
 
 ## Auth
 

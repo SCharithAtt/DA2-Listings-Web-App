@@ -1,36 +1,61 @@
-import React, { useMemo, useState, ChangeEvent } from 'react'
-import { Auth, Listings, Search, Analytics } from './components'
+import React from 'react'
+import { BrowserRouter as Router, Routes, Route } from 'react-router-dom'
+import { AuthProvider } from '../contexts/AuthContext'
+import { Header } from '../components/Header'
+import { ProtectedRoute } from '../components/ProtectedRoute'
+import { HomePage } from '../pages/HomePage'
+import { LoginPage } from '../pages/LoginPage'
+import { RegisterPage } from '../pages/RegisterPage'
+import { CreateListingPage } from '../pages/CreateListingPage'
+import { MyListingsPage } from '../pages/MyListingsPage'
+import { ListingDetailPage } from '../pages/ListingDetailPage'
+import { SearchResultsPage } from '../pages/SearchResultsPage'
+import { AnalyticsPage } from '../pages/AnalyticsPage'
 
 export const App: React.FC = () => {
-  const [token, setToken] = useState<string | null>(null)
-  const [apiUrl, setApiUrl] = useState<string>(import.meta.env.VITE_API_URL || 'http://localhost:8000')
-
-  const authHeader = useMemo(() => token ? { Authorization: `Bearer ${token}` } : {}, [token])
-
   return (
-    <div className="container">
-      <div className="header">
-        <h2 className="brand">DA2 Listings</h2>
-  <input className="input" placeholder="API URL" value={apiUrl} onChange={(e: ChangeEvent<HTMLInputElement>) => setApiUrl(e.target.value)} />
-      </div>
-
-      <div className="row">
-        <div style={{flex:1}} className="card">
-          <Auth apiUrl={apiUrl} onToken={setToken} />
+    <AuthProvider>
+      <Router>
+        <div className="app">
+          <Header />
+          <main className="main-content">
+            <Routes>
+              <Route path="/" element={<HomePage />} />
+              <Route path="/login" element={<LoginPage />} />
+              <Route path="/register" element={<RegisterPage />} />
+              <Route path="/listing/:id" element={<ListingDetailPage />} />
+              <Route path="/search" element={<SearchResultsPage />} />
+              
+              <Route
+                path="/create"
+                element={
+                  <ProtectedRoute>
+                    <CreateListingPage />
+                  </ProtectedRoute>
+                }
+              />
+              
+              <Route
+                path="/my-listings"
+                element={
+                  <ProtectedRoute>
+                    <MyListingsPage />
+                  </ProtectedRoute>
+                }
+              />
+              
+              <Route
+                path="/analytics"
+                element={
+                  <ProtectedRoute requireAdmin>
+                    <AnalyticsPage />
+                  </ProtectedRoute>
+                }
+              />
+            </Routes>
+          </main>
         </div>
-        <div style={{flex:2}} className="card">
-          <Search apiUrl={apiUrl} authHeader={authHeader} />
-        </div>
-      </div>
-
-      <div className="row" style={{marginTop:12}}>
-        <div style={{flex:2}} className="card">
-          <Listings apiUrl={apiUrl} authHeader={authHeader} token={token} />
-        </div>
-        <div style={{flex:1}} className="card">
-          <Analytics apiUrl={apiUrl} />
-        </div>
-      </div>
-    </div>
+      </Router>
+    </AuthProvider>
   )
 }
