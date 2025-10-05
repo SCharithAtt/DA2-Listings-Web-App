@@ -22,6 +22,8 @@ export const SearchResultsPage: React.FC = () => {
   const [searchParams] = useSearchParams()
   const [results, setResults] = useState<Listing[]>([])
   const [sortBy, setSortBy] = useState<SortOption>('similarity')
+  const [minPrice, setMinPrice] = useState<string>('')
+  const [maxPrice, setMaxPrice] = useState<string>('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -37,7 +39,7 @@ export const SearchResultsPage: React.FC = () => {
     if (query) {
       performSearch()
     }
-  }, [query, mode, city, category, tags, sortBy])
+  }, [query, mode, city, category, tags, sortBy, minPrice, maxPrice])
 
   const performSearch = async () => {
     setLoading(true)
@@ -49,6 +51,8 @@ export const SearchResultsPage: React.FC = () => {
       if (city) params.append('city', city)
       if (category) params.append('category', category)
       if (tags) params.append('tags', tags)
+      if (minPrice) params.append('min_price', minPrice)
+      if (maxPrice) params.append('max_price', maxPrice)
       params.append('sort_by', sortBy)
 
       // Choose endpoint based on search mode
@@ -108,6 +112,48 @@ export const SearchResultsPage: React.FC = () => {
             </span>
           )}
         </p>
+      </div>
+
+      <div className="price-filter-section">
+        <h3>💰 Filter by Price</h3>
+        <div className="price-filter-controls">
+          <div className="price-input-group">
+            <label htmlFor="min-price-search">Min Price (Rs)</label>
+            <input
+              id="min-price-search"
+              type="number"
+              className="input price-input"
+              placeholder="0"
+              value={minPrice}
+              onChange={(e) => setMinPrice(e.target.value)}
+              min="0"
+            />
+          </div>
+          <span className="price-separator">—</span>
+          <div className="price-input-group">
+            <label htmlFor="max-price-search">Max Price (Rs)</label>
+            <input
+              id="max-price-search"
+              type="number"
+              className="input price-input"
+              placeholder="Any"
+              value={maxPrice}
+              onChange={(e) => setMaxPrice(e.target.value)}
+              min="0"
+            />
+          </div>
+          {(minPrice || maxPrice) && (
+            <button
+              className="btn btn-secondary btn-clear-filter"
+              onClick={() => {
+                setMinPrice('')
+                setMaxPrice('')
+              }}
+            >
+              Clear
+            </button>
+          )}
+        </div>
       </div>
 
       {loading ? (

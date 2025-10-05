@@ -23,19 +23,29 @@ export const HomePage: React.FC = () => {
   const [categories, setCategories] = useState<string[]>([])
   const [selectedCategory, setSelectedCategory] = useState<string>('')
   const [sortBy, setSortBy] = useState<SortOption>('date_desc')
+  const [minPrice, setMinPrice] = useState<string>('')
+  const [maxPrice, setMaxPrice] = useState<string>('')
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     loadData()
-  }, [selectedCategory, sortBy])
+  }, [selectedCategory, sortBy, minPrice, maxPrice])
 
   const loadData = async () => {
     setLoading(true)
     try {
-      // Load latest listings with sorting
+      // Build URL with price filters
+      const params = new URLSearchParams()
+      params.append('limit', '12')
+      params.append('sort_by', sortBy)
+      if (selectedCategory) params.append('category', selectedCategory)
+      if (minPrice) params.append('min_price', minPrice)
+      if (maxPrice) params.append('max_price', maxPrice)
+
+      // Load latest listings with sorting and filtering
       const listingsUrl = selectedCategory 
-        ? `${API_URL}/listings?category=${selectedCategory}&limit=12&sort_by=${sortBy}`
-        : `${API_URL}/listings/latest?limit=12&sort_by=${sortBy}`
+        ? `${API_URL}/listings?${params.toString()}`
+        : `${API_URL}/listings/latest?${params.toString()}`
       
       const listingsRes = await fetch(listingsUrl)
       const listingsData = await listingsRes.json()
@@ -79,6 +89,48 @@ export const HomePage: React.FC = () => {
               {cat.replace('_', ' ')}
             </button>
           ))}
+        </div>
+      </div>
+
+      <div className="price-filter-section">
+        <h3>💰 Filter by Price</h3>
+        <div className="price-filter-controls">
+          <div className="price-input-group">
+            <label htmlFor="min-price">Min Price (Rs)</label>
+            <input
+              id="min-price"
+              type="number"
+              className="input price-input"
+              placeholder="0"
+              value={minPrice}
+              onChange={(e) => setMinPrice(e.target.value)}
+              min="0"
+            />
+          </div>
+          <span className="price-separator">—</span>
+          <div className="price-input-group">
+            <label htmlFor="max-price">Max Price (Rs)</label>
+            <input
+              id="max-price"
+              type="number"
+              className="input price-input"
+              placeholder="Any"
+              value={maxPrice}
+              onChange={(e) => setMaxPrice(e.target.value)}
+              min="0"
+            />
+          </div>
+          {(minPrice || maxPrice) && (
+            <button
+              className="btn btn-secondary btn-clear-filter"
+              onClick={() => {
+                setMinPrice('')
+                setMaxPrice('')
+              }}
+            >
+              Clear
+            </button>
+          )}
         </div>
       </div>
 

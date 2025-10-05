@@ -27,6 +27,7 @@ export const MyListingsPage: React.FC = () => {
   const [editForm, setEditForm] = useState<Partial<Listing>>({})
   const [imageUrl, setImageUrl] = useState('')
   const [addingImageTo, setAddingImageTo] = useState<string | null>(null)
+  const [newImageUrl, setNewImageUrl] = useState('')
   const [categories] = useState<string[]>([
     'electronics', 'vehicles', 'real_estate', 'jobs', 'services',
     'furniture', 'clothing', 'books', 'sports', 'pets', 'toys',
@@ -177,8 +178,35 @@ export const MyListingsPage: React.FC = () => {
       price: listing.price,
       city: listing.city,
       category: listing.category,
-      tags: listing.tags
+      tags: listing.tags,
+      images: [...listing.images] // Include images in edit form
     })
+  }
+
+  const handleRemoveImage = (imageUrl: string) => {
+    if (!editForm.images) return
+    setEditForm({
+      ...editForm,
+      images: editForm.images.filter(img => img !== imageUrl)
+    })
+  }
+
+  const handleAddNewImage = () => {
+    if (!newImageUrl.trim()) {
+      alert('Please enter an image URL')
+      return
+    }
+
+    if (!newImageUrl.startsWith('http://') && !newImageUrl.startsWith('https://')) {
+      alert('Please enter a valid URL (must start with http:// or https://)')
+      return
+    }
+
+    setEditForm({
+      ...editForm,
+      images: [...(editForm.images || []), newImageUrl]
+    })
+    setNewImageUrl('')
   }
 
   const handleUpdate = async (listingId: string) => {
@@ -189,7 +217,8 @@ export const MyListingsPage: React.FC = () => {
         price: editForm.price,
         city: editForm.city,
         category: editForm.category,
-        tags: editForm.tags
+        tags: editForm.tags,
+        images: editForm.images // Include images in update
       }
 
       const res = await fetch(`${API_URL}/listings/${listingId}`, {
@@ -211,6 +240,7 @@ export const MyListingsPage: React.FC = () => {
       setListings(listings.map(l => l._id === listingId ? { ...l, ...editForm } : l))
       setEditingId(null)
       setEditForm({})
+      setNewImageUrl('')
       alert('Listing updated successfully!')
     } catch (err: any) {
       alert(`Error: ${err.message}`)
@@ -220,6 +250,7 @@ export const MyListingsPage: React.FC = () => {
   const cancelEdit = () => {
     setEditingId(null)
     setEditForm({})
+    setNewImageUrl('')
   }
 
   if (loading) {
@@ -335,6 +366,57 @@ export const MyListingsPage: React.FC = () => {
                           tags: e.target.value.split(',').map(t => t.trim()).filter(Boolean)
                         })}
                       />
+                    </div>
+                    
+                    {/* Image Management Section */}
+                    <div className="form-group">
+                      <label>Images</label>
+                      <div className="image-management">
+                        {editForm.images && editForm.images.length > 0 ? (
+                          <div className="image-list">
+                            {editForm.images.map((img, index) => (
+                              <div key={index} className="image-item">
+                                <img 
+                                  src={resolveImageUrl(img)} 
+                                  alt={`Image ${index + 1}`}
+                                  className="image-thumbnail"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveImage(img)}
+                                  className="btn-remove-image"
+                                  title="Remove image"
+                                >
+                                  ✕
+                                </button>
+                                <small className="image-url-text">{img.substring(0, 30)}...</small>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="no-images-text">No images</p>
+                        )}
+                        
+                        {/* Add New Image URL */}
+                        <div className="add-image-section">
+                          <div className="add-image-input-group">
+                            <input
+                              type="url"
+                              className="input"
+                              placeholder="https://example.com/image.jpg"
+                              value={newImageUrl}
+                              onChange={(e) => setNewImageUrl(e.target.value)}
+                            />
+                            <button
+                              type="button"
+                              onClick={handleAddNewImage}
+                              className="btn btn-secondary btn-sm"
+                            >
+                              + Add Image
+                            </button>
+                          </div>
+                        </div>
+                      </div>
                     </div>
                     
                     <div className="listing-actions">
