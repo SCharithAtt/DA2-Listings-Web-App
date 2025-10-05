@@ -285,8 +285,8 @@ async def batch_insert_listings(user_email: str):
     
     for i, listing_data in enumerate(REALISTIC_LISTINGS, 1):
         try:
-            # Add required fields
-            listing_data["userId"] = user_id
+            # Add required fields (userId must be string for API compatibility)
+            listing_data["userId"] = str(user_id)
             listing_data["posted_date"] = datetime.utcnow()
             listing_data["expires_at"] = datetime.utcnow() + timedelta(days=30)
             

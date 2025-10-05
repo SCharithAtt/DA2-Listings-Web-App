@@ -118,20 +118,16 @@ async def create_listing(payload: ListingCreate, user_id: str = Depends(get_curr
 
 @router.get("/latest", response_model=List[ListingOut])
 async def latest_listings(limit: int = 12, db=Depends(get_db)):
-    try:
-        limit = max(1, min(limit, 50))
-        print(f"Fetching latest {limit} listings")
-        cursor = db.listings.find({}).sort("posted_date", -1).limit(limit)
-        results = []
-        async for doc in cursor:
-            results.append(normalize_id(doc))
-        print(f"Found {len(results)} listings")
-        return results
-    except Exception as e:
-        print(f"Error in latest_listings: {type(e).__name__}: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Error fetching latest listings: {str(e)}")
+    limit = max(1, min(limit, 50))
+    cursor = db.listings.find({}).sort("posted_date", -1).limit(limit)
+    results = []
+    async for doc in cursor:
+        normalized = normalize_id(doc)
+        # Remove embedding field if present (it's huge and not needed for display)
+        if 'embedding' in normalized:
+            del normalized['embedding']
+        results.append(normalized)
+    return results
 
 
 @router.get("/categories", response_model=List[str])
@@ -158,14 +154,6 @@ async def my_listings(user_id: str = Depends(get_current_user_id), db=Depends(ge
     except Exception as e:
         print(f"Error in my_listings: {type(e).__name__}: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error fetching listings: {str(e)}")
-
-
-@router.get("/{listing_id}", response_model=ListingOut)
-async def get_listing(listing_id: str, db=Depends(get_db)):
-    doc = await db.listings.find_one({"_id": _to_object_id(listing_id)})
-    if not doc:
-        raise HTTPException(status_code=404, detail="Listing not found")
-    return normalize_id(doc)
 
 
 @router.put("/{listing_id}", response_model=ListingOut)
@@ -536,6 +524,15 @@ async def hybrid_search(
             results.append(normalize_id(doc))
     
     return results
+
+
+# IMPORTANT: This route MUST be last among GET routes to avoid catching specific routes like /latest
+@router.get("/{listing_id}", response_model=ListingOut)
+async def get_listing(listing_id: str, db=Depends(get_db)):
+    doc = await db.listings.find_one({"_id": _to_object_id(listing_id)})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Listing not found")
+    return normalize_id(doc)
 
 
 @router.post("/{listing_id}/images/upload")
