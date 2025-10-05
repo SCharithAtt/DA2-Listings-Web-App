@@ -25,7 +25,8 @@ export const Header: React.FC = () => {
     <header className="header">
       <div className="header-content">
         <Link to="/" className="brand">
-          DA2 Listings
+          <span className="brand-icon">🛒</span>
+          <span className="brand-name">Good Market</span>
         </Link>
         
         <form onSubmit={handleSearch} className="search-form">

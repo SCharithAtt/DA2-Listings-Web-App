@@ -4,6 +4,8 @@ import { resolveImageUrl, formatPrice } from '../utils/imageHelper'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
+type SortOption = 'similarity' | 'date_desc' | 'date_asc' | 'price_asc' | 'price_desc'
+
 interface Listing {
   _id: string
   title: string
@@ -19,6 +21,7 @@ interface Listing {
 export const SearchResultsPage: React.FC = () => {
   const [searchParams] = useSearchParams()
   const [results, setResults] = useState<Listing[]>([])
+  const [sortBy, setSortBy] = useState<SortOption>('similarity')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -34,7 +37,7 @@ export const SearchResultsPage: React.FC = () => {
     if (query) {
       performSearch()
     }
-  }, [query, mode, city, category, tags])
+  }, [query, mode, city, category, tags, sortBy])
 
   const performSearch = async () => {
     setLoading(true)
@@ -46,6 +49,7 @@ export const SearchResultsPage: React.FC = () => {
       if (city) params.append('city', city)
       if (category) params.append('category', category)
       if (tags) params.append('tags', tags)
+      params.append('sort_by', sortBy)
 
       // Choose endpoint based on search mode
       let endpoint: string
@@ -120,8 +124,25 @@ export const SearchResultsPage: React.FC = () => {
         </div>
       ) : (
         <>
-          <div className="results-count">
-            Found {results.length} listing{results.length !== 1 ? 's' : ''}
+          <div className="section-header">
+            <div className="results-count">
+              Found {results.length} listing{results.length !== 1 ? 's' : ''}
+            </div>
+            <div className="sort-controls">
+              <label htmlFor="sort-select">Sort by:</label>
+              <select
+                id="sort-select"
+                className="sort-select"
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value as SortOption)}
+              >
+                <option value="similarity">Best Match</option>
+                <option value="date_desc">Newest First</option>
+                <option value="date_asc">Oldest First</option>
+                <option value="price_asc">Price: Low to High</option>
+                <option value="price_desc">Price: High to Low</option>
+              </select>
+            </div>
           </div>
           <div className="listings-grid">
             {results.map((listing) => (
