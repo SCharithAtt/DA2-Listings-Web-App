@@ -23,12 +23,59 @@ def _to_object_id(id_str: str) -> ObjectId:
 
 
 def _listing_corpus(doc: dict) -> str:
+    """
+    Enhanced corpus generation with category context and synonym expansion
+    for better semantic embeddings
+    """
     parts = [
         doc.get("title") or "",
         doc.get("description") or "",
-        " ".join(doc.get("tags") or []),
-        doc.get("city") or "",
     ]
+    
+    # Add category context to help model understand domain
+    category = doc.get("category", "")
+    if category:
+        parts.append(f"Category: {category}")
+    
+    # Expand tags with common synonyms/variations for better matching
+    tags = doc.get("tags") or []
+    expanded_tags = list(tags)  # Start with original tags
+    
+    for tag in tags:
+        tag_lower = tag.lower()
+        
+        # Brand/product expansions
+        if "iphone" in tag_lower or "apple" in tag_lower:
+            expanded_tags.extend(["Apple smartphone", "iOS phone", "Apple device"])
+        elif "samsung" in tag_lower:
+            expanded_tags.extend(["Samsung smartphone", "Android phone", "Galaxy device"])
+        elif "oneplus" in tag_lower or "one plus" in tag_lower:
+            expanded_tags.extend(["OnePlus smartphone", "Android phone", "One Plus device"])
+        elif "lexus" in tag_lower:
+            expanded_tags.extend(["Lexus vehicle", "luxury car", "Toyota premium brand"])
+        elif "toyota" in tag_lower:
+            expanded_tags.extend(["Toyota vehicle", "automobile", "car"])
+        elif "honda" in tag_lower:
+            expanded_tags.extend(["Honda vehicle", "automobile", "car", "motorcycle"])
+        elif "retriever" in tag_lower or "dog" in tag_lower:
+            expanded_tags.extend(["pet dog", "canine", "puppy", "animal companion"])
+        elif "cat" in tag_lower:
+            expanded_tags.extend(["pet cat", "feline", "kitten", "animal companion"])
+        elif "boat" in tag_lower:
+            expanded_tags.extend(["water vessel", "marine vehicle", "watercraft"])
+        elif "laptop" in tag_lower or "notebook" in tag_lower:
+            expanded_tags.extend(["portable computer", "laptop computer", "notebook computer"])
+        elif "phone" in tag_lower and "iphone" not in tag_lower:
+            expanded_tags.extend(["smartphone", "mobile phone", "cell phone"])
+    
+    if expanded_tags:
+        parts.append(" ".join(expanded_tags))
+    
+    # Add city for location awareness
+    city = doc.get("city") or ""
+    if city:
+        parts.append(f"Location: {city}")
+    
     return " | ".join([p for p in parts if p])
 
 
@@ -307,13 +354,26 @@ async def semantic_search(
     lng: Optional[float] = None,
     radius: Optional[float] = None,
     limit: int = 20,
+    min_score: float = Query(default=0.3, description="Minimum similarity score (0-1)"),
     db=Depends(get_db),
 ):
+    """
+    Semantic search using ML embeddings for intelligent similarity matching.
+    Understands synonyms and related terms (e.g., 'Apple Phone' matches 'iPhone').
+    """
     if not settings.enable_semantic_search:
         raise HTTPException(status_code=400, detail="Semantic search disabled")
 
     limit = max(1, min(limit, 100))
-    query_vec = embed_text(q)
+    min_score = max(0.0, min(min_score, 1.0))  # Clamp between 0 and 1
+    
+    # Preprocess and expand query with synonyms
+    from app.utils.query_processor import preprocess_query
+    expanded_query = preprocess_query(q)
+    print(f"🔍 Original query: '{q}' → Expanded: '{expanded_query[:100]}...'")
+    
+    query_vec = embed_text(expanded_query)
+    
     # Base filter: only docs that have embeddings
     base_filter: dict = {"embedding": {"$type": "array"}}
     if city:
@@ -329,21 +389,163 @@ async def semantic_search(
 
     candidates = []
     async for d in db.listings.find(base_filter).limit(500):
-        d["_score"] = _cosine(query_vec, d.get("embedding") or [])
-        candidates.append(d)
-    ranked = sorted(candidates, key=lambda x: x.get("_score", 0), reverse=True)[: limit]
+        score = _cosine(query_vec, d.get("embedding") or [])
+        
+        # Filter by minimum similarity threshold
+        if score >= min_score:
+            d["_score"] = score
+            candidates.append(d)
+    
+    print(f"✅ Found {len(candidates)} results above threshold {min_score}")
+    
+    # Sort by score and limit results
+    ranked = sorted(candidates, key=lambda x: x.get("_score", 0), reverse=True)[:limit]
+    
     for d in ranked:
         d.pop("embedding", None)  # reduce payload
+    
     return [normalize_id(d) for d in ranked]
 
 
-@router.post("/{listing_id}/images")
+@router.get("/search/hybrid", response_model=List[ListingOut])
+async def hybrid_search(
+    q: str = Query(..., min_length=2),
+    city: Optional[str] = None,
+    tags: Optional[str] = None,
+    category: Optional[Category] = None,
+    lat: Optional[float] = None,
+    lng: Optional[float] = None,
+    radius: Optional[float] = None,
+    limit: int = 20,
+    text_weight: float = Query(default=0.4, description="Weight for keyword search (0-1)"),
+    semantic_weight: float = Query(default=0.6, description="Weight for semantic search (0-1)"),
+    min_score: float = Query(default=0.2, description="Minimum combined score"),
+    db=Depends(get_db),
+):
+    """
+    Hybrid search combining keyword matching and semantic similarity.
+    Best of both worlds: exact matches get high scores, but semantic matches also included.
+    """
+    if not settings.enable_semantic_search:
+        raise HTTPException(status_code=400, detail="Semantic search disabled")
+    
+    limit = max(1, min(limit, 100))
+    
+    # Normalize weights
+    total_weight = text_weight + semantic_weight
+    if total_weight > 0:
+        text_weight = text_weight / total_weight
+        semantic_weight = semantic_weight / total_weight
+    else:
+        text_weight = 0.5
+        semantic_weight = 0.5
+    
+    print(f"🔍 Hybrid search: '{q}' (text: {text_weight:.2f}, semantic: {semantic_weight:.2f})")
+    
+    # Preprocess query for semantic search
+    from app.utils.query_processor import preprocess_query
+    expanded_query = preprocess_query(q)
+    
+    # 1. Get semantic search candidates
+    query_vec = embed_text(expanded_query)
+    
+    base_filter: dict = {"embedding": {"$type": "array"}}
+    if city:
+        base_filter["city"] = city
+    if tags:
+        base_filter["tags"] = {"$in": [t.strip() for t in tags.split(",") if t.strip()]}
+    if category:
+        base_filter["category"] = category.value if isinstance(category, Category) else str(category)
+    if lat is not None and lng is not None and radius:
+        base_filter["location"] = {
+            "$geoWithin": {"$centerSphere": [[lng, lat], (radius / 1000) / 6378.1]}
+        }
+    
+    # Get semantic scores
+    semantic_scores = {}
+    async for d in db.listings.find(base_filter).limit(500):
+        doc_id = str(d["_id"])
+        semantic_scores[doc_id] = _cosine(query_vec, d.get("embedding") or [])
+    
+    # 2. Get text search candidates
+    text_match = {"$text": {"$search": q}}
+    if city:
+        text_match["city"] = city
+    if tags:
+        text_match["tags"] = {"$in": [t.strip() for t in tags.split(",") if t.strip()]}
+    if category:
+        text_match["category"] = category.value if isinstance(category, Category) else str(category)
+    if lat is not None and lng is not None and radius:
+        text_match["location"] = {
+            "$geoWithin": {"$centerSphere": [[lng, lat], (radius / 1000) / 6378.1]}
+        }
+    
+    text_pipeline = [
+        {"$match": text_match},
+        {"$addFields": {"textScore": {"$meta": "textScore"}}},
+        {"$limit": 500}
+    ]
+    
+    text_scores = {}
+    max_text_score = 0.0
+    try:
+        async for d in db.listings.aggregate(text_pipeline):
+            doc_id = str(d["_id"])
+            score = d.get("textScore", 0)
+            text_scores[doc_id] = score
+            max_text_score = max(max_text_score, score)
+    except Exception as e:
+        # If text search fails (no index), continue with semantic only
+        print(f"⚠️  Text search failed: {e}")
+        text_scores = {}
+    
+    # Normalize text scores to 0-1 range
+    if max_text_score > 0:
+        text_scores = {k: v / max_text_score for k, v in text_scores.items()}
+    
+    # 3. Combine scores
+    all_doc_ids = set(semantic_scores.keys()) | set(text_scores.keys())
+    combined_scores = {}
+    
+    for doc_id in all_doc_ids:
+        text_score = text_scores.get(doc_id, 0.0)
+        semantic_score = semantic_scores.get(doc_id, 0.0)
+        combined = (text_weight * text_score) + (semantic_weight * semantic_score)
+        
+        if combined >= min_score:
+            combined_scores[doc_id] = {
+                "combined": combined,
+                "text": text_score,
+                "semantic": semantic_score
+            }
+    
+    print(f"✅ Found {len(combined_scores)} results above threshold {min_score}")
+    
+    # 4. Fetch and rank results
+    from bson import ObjectId
+    top_ids = sorted(combined_scores.items(), key=lambda x: x[1]["combined"], reverse=True)[:limit]
+    
+    results = []
+    for doc_id, scores in top_ids:
+        doc = await db.listings.find_one({"_id": ObjectId(doc_id)})
+        if doc:
+            doc["_score"] = scores["combined"]
+            doc["_text_score"] = scores["text"]
+            doc["_semantic_score"] = scores["semantic"]
+            doc.pop("embedding", None)
+            results.append(normalize_id(doc))
+    
+    return results
+
+
+@router.post("/{listing_id}/images/upload")
 async def upload_listing_image(
     listing_id: str,
     file: UploadFile = File(...),
     user_id: str = Depends(get_current_user_id),
     db=Depends(get_db),
 ):
+    """Upload an image file for a listing"""
     oid = _to_object_id(listing_id)
     doc = await db.listings.find_one({"_id": oid})
     if not doc:
@@ -357,3 +559,27 @@ async def upload_listing_image(
     url = await save_image(file, listing_id)
     await db.listings.update_one({"_id": oid}, {"$push": {"images": url}})
     return {"url": url}
+
+
+@router.post("/{listing_id}/images/url")
+async def add_image_by_url(
+    listing_id: str,
+    image_url: str = Query(..., description="URL of the image to add"),
+    user_id: str = Depends(get_current_user_id),
+    db=Depends(get_db),
+):
+    """Add an image to a listing via URL"""
+    oid = _to_object_id(listing_id)
+    doc = await db.listings.find_one({"_id": oid})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Listing not found")
+    if doc.get("userId") != user_id:
+        raise HTTPException(status_code=403, detail="Not authorized")
+    
+    # Validate URL format
+    if not image_url.startswith(("http://", "https://")):
+        raise HTTPException(status_code=400, detail="Invalid URL format")
+    
+    # Add the URL to the images array
+    await db.listings.update_one({"_id": oid}, {"$push": {"images": image_url}})
+    return {"url": image_url, "message": "Image URL added successfully"}

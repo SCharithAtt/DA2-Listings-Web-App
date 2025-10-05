@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { resolveImageUrl, formatPrice } from '../utils/imageHelper'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
@@ -94,7 +95,7 @@ export const HomePage: React.FC = () => {
               >
                 {listing.images && listing.images.length > 0 ? (
                   <img
-                    src={`${API_URL}${listing.images[0]}`}
+                    src={resolveImageUrl(listing.images[0])}
                     alt={listing.title}
                     className="listing-image"
                   />
@@ -104,7 +105,7 @@ export const HomePage: React.FC = () => {
                 <div className="listing-content">
                   <div className="listing-header">
                     <h4 className="listing-title">{listing.title}</h4>
-                    <span className="listing-price">${listing.price}</span>
+                    <span className="listing-price">{formatPrice(listing.price)}</span>
                   </div>
                   <p className="listing-description">{listing.description.substring(0, 100)}...</p>
                   <div className="listing-meta">

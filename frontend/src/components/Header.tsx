@@ -6,6 +6,7 @@ export const Header: React.FC = () => {
   const { isAuthenticated, user, logout } = useAuth()
   const navigate = useNavigate()
   const [searchQuery, setSearchQuery] = useState('')
+  const [smartSearch, setSmartSearch] = useState(true) // Smart search enabled by default
 
   const handleLogout = () => {
     logout()
@@ -15,7 +16,8 @@ export const Header: React.FC = () => {
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault()
     if (searchQuery.trim()) {
-      navigate(`/search?q=${encodeURIComponent(searchQuery.trim())}`)
+      const mode = smartSearch ? 'smart' : 'keyword'
+      navigate(`/search?q=${encodeURIComponent(searchQuery.trim())}&mode=${mode}`)
     }
   }
 
@@ -30,10 +32,24 @@ export const Header: React.FC = () => {
           <input
             type="text"
             className="input search-input"
-            placeholder="Search listings..."
+            placeholder={smartSearch ? "Smart search (e.g., 'Apple Phone')..." : "Keyword search..."}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
+          <div className="search-mode-toggle">
+            <label className="toggle-label">
+              <input
+                type="checkbox"
+                checked={smartSearch}
+                onChange={(e) => setSmartSearch(e.target.checked)}
+                className="toggle-checkbox"
+              />
+              <span className="toggle-slider"></span>
+              <span className="toggle-text">
+                {smartSearch ? '🧠 Smart Search' : '🔍 Keyword Search'}
+              </span>
+            </label>
+          </div>
           <button type="submit" className="btn btn-primary">
             Search
           </button>

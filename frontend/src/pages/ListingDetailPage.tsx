@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
+import { resolveImageUrl, formatPrice } from '../utils/imageHelper'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
@@ -97,7 +98,7 @@ export const ListingDetailPage: React.FC = () => {
               <>
                 <div className="image-viewer">
                   <img
-                    src={`${API_URL}${listing.images[currentImageIndex]}`}
+                    src={resolveImageUrl(listing.images[currentImageIndex])}
                     alt={listing.title}
                     className="detail-main-image"
                   />
@@ -120,7 +121,7 @@ export const ListingDetailPage: React.FC = () => {
                     {listing.images.map((img, idx) => (
                       <img
                         key={idx}
-                        src={`${API_URL}${img}`}
+                        src={resolveImageUrl(img)}
                         alt={`${listing.title} ${idx + 1}`}
                         className={`thumbnail ${idx === currentImageIndex ? 'active' : ''}`}
                         onClick={() => setCurrentImageIndex(idx)}
@@ -137,7 +138,7 @@ export const ListingDetailPage: React.FC = () => {
           <div className="detail-info">
             <div className="detail-header">
               <h1>{listing.title}</h1>
-              <div className="detail-price">${listing.price}</div>
+              <div className="detail-price">{formatPrice(listing.price)}</div>
             </div>
 
             <div className="detail-meta">

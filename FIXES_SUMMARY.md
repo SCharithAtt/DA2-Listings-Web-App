@@ -135,3 +135,53 @@
 ## Known Issues
 1. "My Listings" page may show "Invalid id" error - backend endpoint investigation in progress
 2. Some database queries returning 400 Bad Request - investigating MongoDB connection state
+
+---
+
+## Date: October 5, 2025 (Afternoon)
+
+### 4. Fixed Image Display Issue (Thumbnails and Detail Pages)
+
+**Problem:** Images were not appearing in thumbnails or listing detail pages after implementing URL-based image addition.
+
+**Root Cause:** The application was inconsistently handling two types of image paths:
+1. **File Upload Images**: Relative paths like `/static/listings_images/abc123.png`
+2. **URL Images**: Absolute URLs like `https://example.com/photo.jpg`
+
+All image display code was always prepending `${API_URL}` to paths:
+```tsx
+src={`${API_URL}${listing.images[0]}`}
+```
+
+This worked for uploaded files but broke URL-based images:
+- ❌ `http://localhost:8000https://example.com/photo.jpg` (BROKEN)
+- ✅ `https://example.com/photo.jpg` (CORRECT)
+
+**Solution:**
+- Created utility function `resolveImageUrl()` in `frontend/src/utils/imageHelper.ts`
+- Function checks if path is absolute URL (starts with http:// or https://)
+- Returns absolute URLs as-is, prepends API_URL to relative paths
+- Updated all image rendering code across 4 pages to use this utility
+
+**Files Created:**
+- `frontend/src/utils/imageHelper.ts` (NEW)
+
+**Files Modified:**
+- `frontend/src/pages/HomePage.tsx` - Updated listing thumbnails
+- `frontend/src/pages/MyListingsPage.tsx` - Updated my listings thumbnails
+- `frontend/src/pages/ListingDetailPage.tsx` - Updated main image + thumbnail carousel
+- `frontend/src/pages/SearchResultsPage.tsx` - Updated search result thumbnails
+
+**Testing:**
+- ✅ Uploaded file images display correctly (`/static/listings_images/xyz.png`)
+- ✅ URL-based images display correctly (`https://example.com/image.jpg`)
+- ✅ No image placeholder displays when images array is empty
+- ✅ Image carousel works with multiple images
+- ✅ Thumbnails clickable in detail page
+
+**Benefits:**
+- Backward compatible with existing uploaded images
+- Supports external URL images
+- Single utility function for all image handling
+- Type-safe TypeScript implementation
+- Easy to extend for future enhancements (default images, lazy loading, etc.)

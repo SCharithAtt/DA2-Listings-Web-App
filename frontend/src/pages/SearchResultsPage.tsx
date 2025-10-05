@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
+import { resolveImageUrl, formatPrice } from '../utils/imageHelper'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
@@ -16,22 +17,24 @@ interface Listing {
 }
 
 export const SearchResultsPage: React.FC = () => {
-  const [searchParams, setSearchParams] = useSearchParams()
+  const [searchParams] = useSearchParams()
   const [results, setResults] = useState<Listing[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [useSemanticSearch, setUseSemanticSearch] = useState(true)
 
   const query = searchParams.get('q') || ''
+  const mode = searchParams.get('mode') || 'smart' // 'smart' or 'keyword'
   const city = searchParams.get('city') || ''
   const category = searchParams.get('category') || ''
   const tags = searchParams.get('tags') || ''
+
+  const isSmartSearch = mode === 'smart'
 
   useEffect(() => {
     if (query) {
       performSearch()
     }
-  }, [query, city, category, tags, useSemanticSearch])
+  }, [query, mode, city, category, tags])
 
   const performSearch = async () => {
     setLoading(true)
@@ -44,19 +47,34 @@ export const SearchResultsPage: React.FC = () => {
       if (category) params.append('category', category)
       if (tags) params.append('tags', tags)
 
-      // Use semantic search by default for better typo handling
-      const endpoint = useSemanticSearch 
-        ? `${API_URL}/listings/search/semantic?${params.toString()}`
-        : `${API_URL}/listings/search/advanced?${params.toString()}`
+      // Choose endpoint based on search mode
+      let endpoint: string
+      if (isSmartSearch) {
+        // Use hybrid search for smart mode (combines text + semantic)
+        endpoint = `${API_URL}/listings/search/hybrid?${params.toString()}`
+      } else {
+        // Use advanced text search for keyword mode
+        endpoint = `${API_URL}/listings/search/advanced?${params.toString()}`
+      }
+
+      console.log(`🔍 Search mode: ${mode}, endpoint: ${endpoint}`)
 
       const res = await fetch(endpoint)
       const data = await res.json()
 
       if (!res.ok) {
-        // If semantic search fails (e.g., not enabled), fall back to advanced search
-        if (useSemanticSearch) {
-          console.log('Semantic search not available, falling back to advanced search')
-          setUseSemanticSearch(false)
+        // If hybrid/semantic search fails, fall back to text search
+        if (isSmartSearch) {
+          console.log('Smart search not available, falling back to keyword search')
+          const fallbackEndpoint = `${API_URL}/listings/search/advanced?${params.toString()}`
+          const fallbackRes = await fetch(fallbackEndpoint)
+          const fallbackData = await fallbackRes.json()
+          
+          if (!fallbackRes.ok) {
+            throw new Error(fallbackData?.detail || 'Search failed')
+          }
+          
+          setResults(Array.isArray(fallbackData) ? fallbackData : [])
           return
         }
         throw new Error(data?.detail || 'Search failed')
@@ -76,19 +94,16 @@ export const SearchResultsPage: React.FC = () => {
         <h2>Search Results</h2>
         <p className="search-query">
           Searching for: <strong>{query}</strong>
-          {useSemanticSearch && <span className="badge semantic-badge">Smart Search (handles typos)</span>}
+          {isSmartSearch ? (
+            <span className="badge" style={{background: '#e8f1ff', color: '#2563eb', marginLeft: '8px'}}>
+              🧠 Smart Search (understands synonyms)
+            </span>
+          ) : (
+            <span className="badge" style={{background: '#f3f4f6', color: '#4b5563', marginLeft: '8px'}}>
+              🔍 Keyword Search (exact matches)
+            </span>
+          )}
         </p>
-        
-        <div className="search-toggle">
-          <label>
-            <input
-              type="checkbox"
-              checked={useSemanticSearch}
-              onChange={(e) => setUseSemanticSearch(e.target.checked)}
-            />
-            Use Smart Search (better with typos)
-          </label>
-        </div>
       </div>
 
       {loading ? (
@@ -117,7 +132,7 @@ export const SearchResultsPage: React.FC = () => {
               >
                 {listing.images && listing.images.length > 0 ? (
                   <img
-                    src={`${API_URL}${listing.images[0]}`}
+                    src={resolveImageUrl(listing.images[0])}
                     alt={listing.title}
                     className="listing-image"
                   />
@@ -127,7 +142,7 @@ export const SearchResultsPage: React.FC = () => {
                 <div className="listing-content">
                   <div className="listing-header">
                     <h4 className="listing-title">{listing.title}</h4>
-                    <span className="listing-price">${listing.price}</span>
+                    <span className="listing-price">{formatPrice(listing.price)}</span>
                   </div>
                   <p className="listing-description">
                     {listing.description.substring(0, 100)}...

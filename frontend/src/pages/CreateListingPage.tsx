@@ -16,6 +16,8 @@ export const CreateListingPage: React.FC = () => {
   const [expiryDays, setExpiryDays] = useState('30')
   const [imageFile, setImageFile] = useState<File | null>(null)
   const [imagePreview, setImagePreview] = useState<string | null>(null)
+  const [imageUrl, setImageUrl] = useState('')
+  const [imageUrlPreview, setImageUrlPreview] = useState<string | null>(null)
   const [categories, setCategories] = useState<string[]>([
     'electronics',
     'vehicles',
@@ -64,6 +66,10 @@ export const CreateListingPage: React.FC = () => {
         return
       }
       setImageFile(file)
+      // Clear URL input if file is selected
+      setImageUrl('')
+      setImageUrlPreview(null)
+      
       const reader = new FileReader()
       reader.onloadend = () => {
         setImagePreview(reader.result as string)
@@ -72,13 +78,31 @@ export const CreateListingPage: React.FC = () => {
     }
   }
 
+  const handleImageUrlChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const url = e.target.value
+    setImageUrl(url)
+    
+    // Clear file input if URL is entered
+    if (url.trim()) {
+      setImageFile(null)
+      setImagePreview(null)
+    }
+    
+    // Show preview if it's a valid URL
+    if (url.startsWith('http://') || url.startsWith('https://')) {
+      setImageUrlPreview(url)
+    } else {
+      setImageUrlPreview(null)
+    }
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
 
-    // Validation
-    if (!title || !description || !imageFile || !city || !category) {
-      setError('Please fill in all required fields (Title, Description, Image, City, Category)')
+    // Validation - image is now optional
+    if (!title || !description || !city || !category) {
+      setError('Please fill in all required fields (Title, Description, City, Category)')
       return
     }
 
@@ -135,20 +159,36 @@ export const CreateListingPage: React.FC = () => {
 
       const listingId = data._id
 
-      // Upload image
-      const formData = new FormData()
-      formData.append('file', imageFile)
+      // Upload image file if provided
+      if (imageFile) {
+        const formData = new FormData()
+        formData.append('file', imageFile)
 
-      const imgRes = await fetch(`${API_URL}/listings/${listingId}/images`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`
-        },
-        body: formData
-      })
+        const imgRes = await fetch(`${API_URL}/listings/${listingId}/images/upload`, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`
+          },
+          body: formData
+        })
 
-      if (!imgRes.ok) {
-        throw new Error('Failed to upload image')
+        if (!imgRes.ok) {
+          throw new Error('Failed to upload image')
+        }
+      }
+      
+      // Add image URL if provided
+      if (imageUrl.trim() && (imageUrl.startsWith('http://') || imageUrl.startsWith('https://'))) {
+        const urlRes = await fetch(`${API_URL}/listings/${listingId}/images/url?image_url=${encodeURIComponent(imageUrl)}`, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        })
+
+        if (!urlRes.ok) {
+          throw new Error('Failed to add image URL')
+        }
       }
 
       navigate('/my-listings')
@@ -179,16 +219,16 @@ export const CreateListingPage: React.FC = () => {
             </div>
 
             <div className="form-group">
-              <label htmlFor="price">Price ($)</label>
+              <label htmlFor="price">Price (LKR)</label>
               <input
                 id="price"
                 type="number"
                 className="input"
-                placeholder="0.00"
+                placeholder="0"
                 value={price}
                 onChange={(e) => setPrice(e.target.value)}
                 min="0"
-                step="0.01"
+                step="1"
               />
             </div>
           </div>
@@ -207,18 +247,37 @@ export const CreateListingPage: React.FC = () => {
           </div>
 
           <div className="form-group">
-            <label htmlFor="image">Image * (Required)</label>
+            <label htmlFor="image">Image (Optional)</label>
             <input
               id="image"
               type="file"
               accept="image/*"
               onChange={handleImageChange}
               className="file-input"
-              required
             />
             {imagePreview && (
               <div className="image-preview">
                 <img src={imagePreview} alt="Preview" />
+              </div>
+            )}
+          </div>
+
+          <div className="form-group">
+            <label htmlFor="imageUrl">Or Add Image via URL</label>
+            <input
+              id="imageUrl"
+              type="url"
+              className="input"
+              placeholder="https://example.com/image.jpg"
+              value={imageUrl}
+              onChange={handleImageUrlChange}
+            />
+            <small style={{ color: '#666', fontSize: '0.85rem', marginTop: '4px', display: 'block' }}>
+              Enter a direct image URL (must start with http:// or https://)
+            </small>
+            {imageUrlPreview && (
+              <div className="image-preview" style={{ marginTop: '8px' }}>
+                <img src={imageUrlPreview} alt="URL Preview" onError={() => setImageUrlPreview(null)} />
               </div>
             )}
           </div>

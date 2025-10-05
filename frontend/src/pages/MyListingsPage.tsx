@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
+import { getCityNames } from '../utils/cities'
+import { resolveImageUrl, formatPrice } from '../utils/imageHelper'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
@@ -21,6 +23,16 @@ export const MyListingsPage: React.FC = () => {
   const [listings, setListings] = useState<Listing[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editForm, setEditForm] = useState<Partial<Listing>>({})
+  const [imageUrl, setImageUrl] = useState('')
+  const [addingImageTo, setAddingImageTo] = useState<string | null>(null)
+  const [categories] = useState<string[]>([
+    'electronics', 'vehicles', 'real_estate', 'jobs', 'services',
+    'furniture', 'clothing', 'books', 'sports', 'pets', 'toys',
+    'home_garden', 'health_beauty', 'food_beverages', 'other'
+  ])
+  const [availableCities] = useState<string[]>(getCityNames())
   const { token } = useAuth()
 
   useEffect(() => {
@@ -92,7 +104,7 @@ export const MyListingsPage: React.FC = () => {
       const formData = new FormData()
       formData.append('file', file)
 
-      const res = await fetch(`${API_URL}/listings/${listingId}/images`, {
+      const res = await fetch(`${API_URL}/listings/${listingId}/images/upload`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${token}`
@@ -115,6 +127,99 @@ export const MyListingsPage: React.FC = () => {
     } catch (err: any) {
       alert(`Error: ${err.message}`)
     }
+  }
+
+  const handleAddImageByUrl = async (listingId: string) => {
+    if (!imageUrl.trim()) {
+      alert('Please enter an image URL')
+      return
+    }
+
+    if (!imageUrl.startsWith('http://') && !imageUrl.startsWith('https://')) {
+      alert('Please enter a valid URL (must start with http:// or https://)')
+      return
+    }
+
+    try {
+      const res = await fetch(`${API_URL}/listings/${listingId}/images/url?image_url=${encodeURIComponent(imageUrl)}`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      })
+
+      const data = await res.json()
+
+      if (!res.ok) {
+        throw new Error(data?.detail || 'Failed to add image')
+      }
+
+      // Update listing with new image
+      setListings(listings.map(l => 
+        l._id === listingId 
+          ? { ...l, images: [...l.images, imageUrl] }
+          : l
+      ))
+
+      setImageUrl('')
+      setAddingImageTo(null)
+      alert('Image URL added successfully!')
+    } catch (err: any) {
+      alert(`Error: ${err.message}`)
+    }
+  }
+
+  const startEdit = (listing: Listing) => {
+    setEditingId(listing._id)
+    setEditForm({
+      title: listing.title,
+      description: listing.description,
+      price: listing.price,
+      city: listing.city,
+      category: listing.category,
+      tags: listing.tags
+    })
+  }
+
+  const handleUpdate = async (listingId: string) => {
+    try {
+      const payload = {
+        title: editForm.title,
+        description: editForm.description,
+        price: editForm.price,
+        city: editForm.city,
+        category: editForm.category,
+        tags: editForm.tags
+      }
+
+      const res = await fetch(`${API_URL}/listings/${listingId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify(payload)
+      })
+
+      const data = await res.json()
+
+      if (!res.ok) {
+        throw new Error(data?.detail || 'Failed to update listing')
+      }
+
+      // Update local state
+      setListings(listings.map(l => l._id === listingId ? { ...l, ...editForm } : l))
+      setEditingId(null)
+      setEditForm({})
+      alert('Listing updated successfully!')
+    } catch (err: any) {
+      alert(`Error: ${err.message}`)
+    }
+  }
+
+  const cancelEdit = () => {
+    setEditingId(null)
+    setEditForm({})
   }
 
   if (loading) {
@@ -149,7 +254,7 @@ export const MyListingsPage: React.FC = () => {
             <div key={listing._id} className="listing-card my-listing-card">
               {listing.images && listing.images.length > 0 ? (
                 <img
-                  src={`${API_URL}${listing.images[0]}`}
+                  src={resolveImageUrl(listing.images[0])}
                   alt={listing.title}
                   className="listing-image"
                 />
@@ -158,60 +263,199 @@ export const MyListingsPage: React.FC = () => {
               )}
               
               <div className="listing-content">
-                <div className="listing-header">
-                  <h4 className="listing-title">{listing.title}</h4>
-                  <span className="listing-price">${listing.price}</span>
-                </div>
-                
-                <p className="listing-description">
-                  {listing.description.substring(0, 100)}...
-                </p>
-                
-                <div className="listing-meta">
-                  <span className="listing-city">{listing.city}</span>
-                  <span className="listing-category">{listing.category}</span>
-                </div>
-
-                {listing.tags && listing.tags.length > 0 && (
-                  <div className="listing-tags">
-                    {listing.tags.map((tag) => (
-                      <span key={tag} className="tag">{tag}</span>
-                    ))}
+                {editingId === listing._id ? (
+                  // Edit Mode
+                  <div className="edit-form">
+                    <div className="form-group">
+                      <label>Title</label>
+                      <input
+                        type="text"
+                        className="input"
+                        value={editForm.title || ''}
+                        onChange={(e) => setEditForm({ ...editForm, title: e.target.value })}
+                      />
+                    </div>
+                    
+                    <div className="form-group">
+                      <label>Description</label>
+                      <textarea
+                        className="input"
+                        rows={3}
+                        value={editForm.description || ''}
+                        onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
+                      />
+                    </div>
+                    
+                    <div className="form-row">
+                      <div className="form-group">
+                        <label>Price (LKR)</label>
+                        <input
+                          type="number"
+                          className="input"
+                          value={editForm.price || 0}
+                          onChange={(e) => setEditForm({ ...editForm, price: Number(e.target.value) })}
+                        />
+                      </div>
+                      
+                      <div className="form-group">
+                        <label>City</label>
+                        <select
+                          className="input"
+                          value={editForm.city || ''}
+                          onChange={(e) => setEditForm({ ...editForm, city: e.target.value })}
+                        >
+                          {availableCities.map(c => (
+                            <option key={c} value={c}>{c}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                    
+                    <div className="form-group">
+                      <label>Category</label>
+                      <select
+                        className="input"
+                        value={editForm.category || ''}
+                        onChange={(e) => setEditForm({ ...editForm, category: e.target.value })}
+                      >
+                        {categories.map(cat => (
+                          <option key={cat} value={cat}>{cat.replace('_', ' ')}</option>
+                        ))}
+                      </select>
+                    </div>
+                    
+                    <div className="form-group">
+                      <label>Tags (comma-separated)</label>
+                      <input
+                        type="text"
+                        className="input"
+                        value={editForm.tags?.join(', ') || ''}
+                        onChange={(e) => setEditForm({ 
+                          ...editForm, 
+                          tags: e.target.value.split(',').map(t => t.trim()).filter(Boolean)
+                        })}
+                      />
+                    </div>
+                    
+                    <div className="listing-actions">
+                      <button
+                        onClick={() => handleUpdate(listing._id)}
+                        className="btn btn-primary btn-sm"
+                      >
+                        Save
+                      </button>
+                      <button
+                        onClick={cancelEdit}
+                        className="btn btn-secondary btn-sm"
+                      >
+                        Cancel
+                      </button>
+                    </div>
                   </div>
+                ) : (
+                  // View Mode
+                  <>
+                    <div className="listing-header">
+                      <h4 className="listing-title">{listing.title}</h4>
+                      <span className="listing-price">{formatPrice(listing.price)}</span>
+                    </div>
+                    
+                    <p className="listing-description">
+                      {listing.description.substring(0, 100)}...
+                    </p>
+                    
+                    <div className="listing-meta">
+                      <span className="listing-city">{listing.city}</span>
+                      <span className="listing-category">{listing.category}</span>
+                    </div>
+
+                    {listing.tags && listing.tags.length > 0 && (
+                      <div className="listing-tags">
+                        {listing.tags.map((tag) => (
+                          <span key={tag} className="tag">{tag}</span>
+                        ))}
+                      </div>
+                    )}
+
+                    <div className="listing-dates">
+                      <small>Expires: {new Date(listing.expires_at).toLocaleDateString()}</small>
+                    </div>
+
+                    {/* Image URL Input */}
+                    {addingImageTo === listing._id && (
+                      <div className="url-input-container" style={{ marginTop: '10px', marginBottom: '10px' }}>
+                        <input
+                          type="url"
+                          className="input"
+                          placeholder="https://example.com/image.jpg"
+                          value={imageUrl}
+                          onChange={(e) => setImageUrl(e.target.value)}
+                          style={{ marginBottom: '5px' }}
+                        />
+                        <div style={{ display: 'flex', gap: '5px' }}>
+                          <button
+                            onClick={() => handleAddImageByUrl(listing._id)}
+                            className="btn btn-primary btn-sm"
+                          >
+                            Add URL
+                          </button>
+                          <button
+                            onClick={() => {
+                              setAddingImageTo(null)
+                              setImageUrl('')
+                            }}
+                            className="btn btn-secondary btn-sm"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="listing-actions">
+                      <Link to={`/listing/${listing._id}`} className="btn btn-secondary btn-sm">
+                        View
+                      </Link>
+                      
+                      <button
+                        onClick={() => startEdit(listing)}
+                        className="btn btn-secondary btn-sm"
+                      >
+                        Edit
+                      </button>
+                      
+                      <label className="btn btn-secondary btn-sm" style={{ cursor: 'pointer' }}>
+                        Upload Image
+                        <input
+                          type="file"
+                          accept="image/*"
+                          style={{ display: 'none' }}
+                          onChange={(e) => {
+                            const file = e.target.files?.[0]
+                            if (file) {
+                              handleUploadImage(listing._id, file)
+                              e.currentTarget.value = ''
+                            }
+                          }}
+                        />
+                      </label>
+
+                      <button
+                        onClick={() => setAddingImageTo(listing._id)}
+                        className="btn btn-secondary btn-sm"
+                      >
+                        Image URL
+                      </button>
+
+                      <button
+                        onClick={() => handleDelete(listing._id)}
+                        className="btn btn-danger btn-sm"
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </>
                 )}
-
-                <div className="listing-dates">
-                  <small>Expires: {new Date(listing.expires_at).toLocaleDateString()}</small>
-                </div>
-
-                <div className="listing-actions">
-                  <Link to={`/listing/${listing._id}`} className="btn btn-secondary btn-sm">
-                    View
-                  </Link>
-                  
-                  <label className="btn btn-secondary btn-sm" style={{ cursor: 'pointer' }}>
-                    Add Image
-                    <input
-                      type="file"
-                      accept="image/*"
-                      style={{ display: 'none' }}
-                      onChange={(e) => {
-                        const file = e.target.files?.[0]
-                        if (file) {
-                          handleUploadImage(listing._id, file)
-                          e.currentTarget.value = ''
-                        }
-                      }}
-                    />
-                  </label>
-
-                  <button
-                    onClick={() => handleDelete(listing._id)}
-                    className="btn btn-danger btn-sm"
-                  >
-                    Delete
-                  </button>
-                </div>
               </div>
             </div>
           ))}
