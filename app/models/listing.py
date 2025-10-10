@@ -52,6 +52,7 @@ class ListingUpdate(BaseModel):
     city: Optional[str] = None
     category: Optional[Category] = None
     features: Optional[List[str]] = None
+    images: Optional[List[str]] = None
     lat: Optional[float] = Field(default=None, ge=-90, le=90)
     lng: Optional[float] = Field(default=None, ge=-180, le=180)
     expiry_days: Optional[int] = Field(default=None, description="Allowed: 7,14,30,90")

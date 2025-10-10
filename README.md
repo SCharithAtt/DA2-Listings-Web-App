@@ -1,6 +1,6 @@
-# DA2 Smart Listings Web App
+# Good Market - Smart Listings Web App
 
-Full-stack listings application with FastAPI + MongoDB backend and React + TypeScript frontend. Features JWT auth, intelligent semantic search, geospatial queries, and analytics ETL.
+Full-stack marketplace application with FastAPI + MongoDB backend and React + TypeScript frontend. Features JWT auth, intelligent semantic search, geospatial queries, analytics ETL, sorting, price filtering, and comprehensive listing management.
 
 ## Project structure
 
@@ -69,12 +69,16 @@ Open http://localhost:5173
 ### Frontend Features
 - ✅ Multi-page routing (React Router v6)
 - ✅ User authentication with persistent sessions
-- ✅ Create listings with mandatory image upload
+- ✅ Create listings with image URLs
 - ✅ Browse and filter by category
-- ✅ Smart semantic search (handles typos)
-- ✅ My Listings management (view/edit/delete)
-- ✅ Admin analytics dashboard
-- ✅ Responsive modern design
+- ✅ Smart semantic search (handles typos, keyword + semantic modes)
+- ✅ **Sorting** - Sort by date (newest/oldest) or price (low/high)
+- ✅ **Price Filtering** - Filter listings by min/max price range
+- ✅ **Image Management** - Edit, add, or remove images from existing listings
+- ✅ My Listings management (view/edit/delete with full image control)
+- ✅ Admin analytics dashboard with readable visualizations
+- ✅ Responsive modern design with "Good Market" branding
+- ✅ Professional footer with developer credits
 
 See `frontend/README.md` for detailed frontend documentation.
 
@@ -87,15 +91,15 @@ Use the token as `Authorization: Bearer <token>`
 
 ## Listings
 
-- POST /listings (auth) create listing with title, description, price, tags, city, lat, lng, features
+- POST /listings (auth) create listing with title, description, price, tags, city, lat, lng, features, images
 	- Optional: category
 - GET /listings/{id}
-- PUT /listings/{id} (auth, owner only)
+- PUT /listings/{id} (auth, owner only) - supports updating all fields including images array
 - DELETE /listings/{id} (auth, owner only)
-- GET /listings (list)
+- GET /listings?sort_by=date_desc|date_asc|price_asc|price_desc&min_price=X&max_price=Y
 - GET /listings/nearby?lat=..&lng=..&radius=5000
-- GET /listings/search/advanced?q=..&lat=..&lng=..&radius=..&city=..&tags=tag1,tag2&category=...
- - POST /listings/{id}/images (auth, owner only) multipart/form-data file field "file"; returns { url }
+- GET /listings/search/advanced?q=..&lat=..&lng=..&radius=..&city=..&tags=tag1,tag2&category=...&sort_by=...&min_price=X&max_price=Y
+- POST /listings/{id}/images (auth, owner only) multipart/form-data file field "file"; returns { url }
 
 Indexes created automatically on startup:
 - Text index: title, description, tags
@@ -116,12 +120,22 @@ python -m etl.run_etl
 
 Dashboard endpoint: GET /analytics/summary
 
+## Key Features
+
+- **Sorting**: Sort listings by date (newest/oldest) or price (low/high) on all listing pages
+- **Price Filtering**: Filter by minimum and maximum price with real-time updates
+- **Image Management**: Edit mode allows adding/removing images via URLs without recreating listings
+- **Smart Search**: Dual-mode search (keyword + semantic) with typo tolerance
+- **Analytics Dashboard**: Admin dashboard with color-corrected visualizations
+- **Responsive Design**: Mobile-friendly UI with "Good Market" branding
+
 ## Notes
 
 - All writes use Pydantic validation and parameterized queries through motor.
 - No external search engines used.
- - Local image uploads are saved under `app/listings_images` and served at `/listings/images/...`.
- - Frontend: listing cards show the first image as a thumbnail when available and provide an Upload image button (requires login; server enforces ownership).
+- Local image uploads are saved under `app/listings_images` and served at `/listings/images/...`.
+- Frontend: listing cards show the first image as a thumbnail when available and provide an Upload image button (requires login; server enforces ownership).
+- Images can be managed via URLs in edit mode - add, remove, or replace images without deleting the listing.
  
 ## Optional: Semantic search (local cosine)
 
@@ -150,6 +164,8 @@ Endpoint:
 Notes:
 - Uses sentence-transformers model defined in `EMBEDDING_MODEL` (default MiniLM-L6-v2).
 - Keeps existing keyword/geo search intact; this is additive and feature-flagged.
- - CORS is enabled for http://localhost:5173 and http://localhost:3000 in `main.py`.
-# DA2-Listings-Web-App
-CB011671
+- CORS is enabled for http://localhost:5173 and http://localhost:3000 in `main.py`.
+
+---
+
+**Developed by: Senura Attanayake - CB011671**
