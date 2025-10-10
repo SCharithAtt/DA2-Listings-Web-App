@@ -74,6 +74,7 @@ Open http://localhost:5173
 - ✅ Smart semantic search (handles typos, keyword + semantic modes)
 - ✅ **Sorting** - Sort by date (newest/oldest) or price (low/high)
 - ✅ **Price Filtering** - Filter listings by min/max price range
+- ✅ **Location & Distance Filtering** - Filter by city and radius (geospatial search)
 - ✅ **Image Management** - Edit, add, or remove images from existing listings
 - ✅ My Listings management (view/edit/delete with full image control)
 - ✅ Admin analytics dashboard with readable visualizations
@@ -96,9 +97,12 @@ Use the token as `Authorization: Bearer <token>`
 - GET /listings/{id}
 - PUT /listings/{id} (auth, owner only) - supports updating all fields including images array
 - DELETE /listings/{id} (auth, owner only)
-- GET /listings?sort_by=date_desc|date_asc|price_asc|price_desc&min_price=X&max_price=Y
+- GET /listings?sort_by=date_desc|date_asc|price_asc|price_desc&min_price=X&max_price=Y&lat=Y&lng=X&radius=METERS
+- GET /listings/latest?sort_by=...&min_price=X&max_price=Y&lat=Y&lng=X&radius=METERS
 - GET /listings/nearby?lat=..&lng=..&radius=5000
 - GET /listings/search/advanced?q=..&lat=..&lng=..&radius=..&city=..&tags=tag1,tag2&category=...&sort_by=...&min_price=X&max_price=Y
+- GET /listings/search/semantic?q=..&lat=..&lng=..&radius=..&min_price=X&max_price=Y
+- GET /listings/search/hybrid?q=..&lat=..&lng=..&radius=..&min_price=X&max_price=Y
 - POST /listings/{id}/images (auth, owner only) multipart/form-data file field "file"; returns { url }
 
 Indexes created automatically on startup:
@@ -124,6 +128,12 @@ Dashboard endpoint: GET /analytics/summary
 
 - **Sorting**: Sort listings by date (newest/oldest) or price (low/high) on all listing pages
 - **Price Filtering**: Filter by minimum and maximum price with real-time updates
+- **Location & Distance Filtering**: Use MongoDB's geospatial features to filter listings by proximity
+  - Select from 29 Sri Lankan cities with predefined coordinates
+  - Specify search radius (1-50 km, default 10 km)
+  - Works across all listing endpoints (latest, search, semantic, hybrid)
+  - Uses MongoDB's 2dsphere index for efficient geospatial queries
+  - Coordinates stored as GeoJSON Point format: `[longitude, latitude]`
 - **Image Management**: Edit mode allows adding/removing images via URLs without recreating listings
 - **Smart Search**: Dual-mode search (keyword + semantic) with typo tolerance
 - **Analytics Dashboard**: Admin dashboard with color-corrected visualizations

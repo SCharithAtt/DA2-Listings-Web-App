@@ -145,24 +145,58 @@ async def create_listing(payload: ListingCreate, user_id: str = Depends(get_curr
 async def latest_listings(
     limit: int = 12,
     sort_by: SortOption = Query(default=SortOption.date_desc, description="Sort listings by field"),
+    min_price: Optional[float] = Query(default=None, ge=0, description="Minimum price filter"),
+    max_price: Optional[float] = Query(default=None, ge=0, description="Maximum price filter"),
+    lat: Optional[float] = Query(default=None, description="Latitude for location filtering"),
+    lng: Optional[float] = Query(default=None, description="Longitude for location filtering"),
+    radius: Optional[float] = Query(default=10000, ge=0, description="Search radius in meters (default: 10km)"),
     db=Depends(get_db)
 ):
     """
-    Get latest listings with optional sorting
+    Get latest listings with optional sorting, price filtering, and location filtering
     
     Sort options:
     - date_desc: Newest first (default)
     - date_asc: Oldest first
     - price_asc: Price low to high
     - price_desc: Price high to low
+    
+    Filters:
+    - min_price/max_price: Filter by price range
+    - lat/lng/radius: Filter by distance from location (requires both lat and lng)
     """
     limit = max(1, min(limit, 50))
+    
+    # Build query with filters
+    query = {}
+    
+    # Price range filtering
+    if min_price is not None or max_price is not None:
+        price_query = {}
+        if min_price is not None:
+            price_query["$gte"] = min_price
+        if max_price is not None:
+            price_query["$lte"] = max_price
+        if price_query:
+            query["price"] = price_query
+    
+    # Location filtering using MongoDB geospatial query
+    if lat is not None and lng is not None:
+        query["location"] = {
+            "$near": {
+                "$geometry": {
+                    "type": "Point",
+                    "coordinates": [lng, lat]  # MongoDB uses [longitude, latitude] order
+                },
+                "$maxDistance": radius  # Distance in meters
+            }
+        }
     
     # Get sort parameters
     sort_field, sort_direction = _get_sort_params(sort_by)
     
     # Fetch more than requested to account for invalid entries
-    cursor = db.listings.find({}).sort(sort_field, sort_direction).limit(limit * 2)
+    cursor = db.listings.find(query).sort(sort_field, sort_direction).limit(limit * 2)
     results = []
     async for doc in cursor:
         try:
@@ -281,6 +315,11 @@ async def list_listings(
     limit: int = 20,
     category: Optional[Category] = None,
     sort_by: SortOption = Query(default=SortOption.date_desc, description="Sort listings by field"),
+    min_price: Optional[float] = Query(default=None, ge=0, description="Minimum price filter"),
+    max_price: Optional[float] = Query(default=None, ge=0, description="Maximum price filter"),
+    lat: Optional[float] = Query(default=None, description="Latitude for location filtering"),
+    lng: Optional[float] = Query(default=None, description="Longitude for location filtering"),
+    radius: Optional[float] = Query(default=10000, ge=0, description="Search radius in meters (default: 10km)"),
     db=Depends(get_db)
 ):
     """
@@ -291,10 +330,41 @@ async def list_listings(
     - date_asc: Oldest first
     - price_asc: Price low to high
     - price_desc: Price high to low
+    
+    Filters:
+    - category: Filter by category
+    - min_price/max_price: Filter by price range
+    - lat/lng/radius: Filter by distance from location (requires both lat and lng)
     """
     skip = max(0, skip)
     limit = max(1, min(limit, 100))
-    query = {"category": (category.value if isinstance(category, Category) else str(category))} if category else {}
+    
+    # Build query with filters
+    query = {}
+    if category:
+        query["category"] = category.value if isinstance(category, Category) else str(category)
+    
+    # Price range filtering
+    if min_price is not None or max_price is not None:
+        price_query = {}
+        if min_price is not None:
+            price_query["$gte"] = min_price
+        if max_price is not None:
+            price_query["$lte"] = max_price
+        if price_query:
+            query["price"] = price_query
+    
+    # Location filtering using MongoDB geospatial query
+    if lat is not None and lng is not None:
+        query["location"] = {
+            "$near": {
+                "$geometry": {
+                    "type": "Point",
+                    "coordinates": [lng, lat]  # MongoDB uses [longitude, latitude] order
+                },
+                "$maxDistance": radius  # Distance in meters
+            }
+        }
     
     # Get sort parameters
     sort_field, sort_direction = _get_sort_params(sort_by)
@@ -322,10 +392,12 @@ async def search_listings(
     q: Optional[str] = Query(default=None, description="Text query"),
     lat: Optional[float] = None,
     lng: Optional[float] = None,
-    radius: Optional[float] = Query(default=5000, description="meters"),
+    radius: Optional[float] = Query(default=10000, description="Search radius in meters (default: 10km)"),
     city: Optional[str] = None,
     tags: Optional[str] = Query(default=None, description="comma-separated"),
     category: Optional[Category] = None,
+    min_price: Optional[float] = Query(default=None, ge=0, description="Minimum price filter"),
+    max_price: Optional[float] = Query(default=None, ge=0, description="Maximum price filter"),
     skip: int = 0,
     limit: int = 20,
     sort_by: SortOption = Query(default=SortOption.similarity, description="Sort results by field"),
@@ -340,6 +412,13 @@ async def search_listings(
     - date_asc: Oldest first
     - price_asc: Price low to high
     - price_desc: Price high to low
+    
+    Filters:
+    - city: Filter by city name
+    - tags: Comma-separated tags to match
+    - category: Filter by category
+    - min_price/max_price: Filter by price range
+    - lat/lng/radius: Filter by distance from location
     """
     skip = max(0, skip)
     limit = max(1, min(limit, 100))
@@ -356,6 +435,16 @@ async def search_listings(
         match["tags"] = {"$in": [t.strip() for t in tags.split(",") if t.strip()]}
     if category:
         match["category"] = category.value if isinstance(category, Category) else str(category)
+    
+    # Price range filtering
+    if min_price is not None or max_price is not None:
+        price_query = {}
+        if min_price is not None:
+            price_query["$gte"] = min_price
+        if max_price is not None:
+            price_query["$lte"] = max_price
+        if price_query:
+            match["price"] = price_query
     
     # Add initial match stage
     if match:
@@ -475,6 +564,8 @@ async def semantic_search(
     lat: Optional[float] = None,
     lng: Optional[float] = None,
     radius: Optional[float] = None,
+    min_price: Optional[float] = Query(None, ge=0, description="Minimum price"),
+    max_price: Optional[float] = Query(None, ge=0, description="Maximum price"),
     limit: int = 20,
     min_score: float = Query(default=0.3, description="Minimum similarity score (0-1)"),
     sort_by: SortOption = Query(default=SortOption.similarity, description="Sort results by field"),
@@ -516,6 +607,13 @@ async def semantic_search(
         base_filter["location"] = {
             "$geoWithin": {"$centerSphere": [[lng, lat], (radius / 1000) / 6378.1]}
         }
+    # Price filtering
+    if min_price is not None or max_price is not None:
+        base_filter["price"] = {}
+        if min_price is not None:
+            base_filter["price"]["$gte"] = min_price
+        if max_price is not None:
+            base_filter["price"]["$lte"] = max_price
 
     candidates = []
     async for d in db.listings.find(base_filter).limit(500):
@@ -567,6 +665,8 @@ async def hybrid_search(
     lat: Optional[float] = None,
     lng: Optional[float] = None,
     radius: Optional[float] = None,
+    min_price: Optional[float] = Query(None, ge=0, description="Minimum price"),
+    max_price: Optional[float] = Query(None, ge=0, description="Maximum price"),
     limit: int = 20,
     text_weight: float = Query(default=0.4, description="Weight for keyword search (0-1)"),
     semantic_weight: float = Query(default=0.6, description="Weight for semantic search (0-1)"),
@@ -619,6 +719,13 @@ async def hybrid_search(
         base_filter["location"] = {
             "$geoWithin": {"$centerSphere": [[lng, lat], (radius / 1000) / 6378.1]}
         }
+    # Price filtering
+    if min_price is not None or max_price is not None:
+        base_filter["price"] = {}
+        if min_price is not None:
+            base_filter["price"]["$gte"] = min_price
+        if max_price is not None:
+            base_filter["price"]["$lte"] = max_price
     
     # Get semantic scores
     semantic_scores = {}
@@ -638,6 +745,13 @@ async def hybrid_search(
         text_match["location"] = {
             "$geoWithin": {"$centerSphere": [[lng, lat], (radius / 1000) / 6378.1]}
         }
+    # Price filtering
+    if min_price is not None or max_price is not None:
+        text_match["price"] = {}
+        if min_price is not None:
+            text_match["price"]["$gte"] = min_price
+        if max_price is not None:
+            text_match["price"]["$lte"] = max_price
     
     text_pipeline = [
         {"$match": text_match},

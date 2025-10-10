@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { resolveImageUrl, formatPrice } from '../utils/imageHelper'
+import { getCityNames, getCityCoordinates } from '../utils/cities'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
@@ -25,22 +26,34 @@ export const HomePage: React.FC = () => {
   const [sortBy, setSortBy] = useState<SortOption>('date_desc')
   const [minPrice, setMinPrice] = useState<string>('')
   const [maxPrice, setMaxPrice] = useState<string>('')
+  const [selectedCity, setSelectedCity] = useState<string>('')
+  const [radius, setRadius] = useState<string>('10')
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     loadData()
-  }, [selectedCategory, sortBy, minPrice, maxPrice])
+  }, [selectedCategory, sortBy, minPrice, maxPrice, selectedCity, radius])
 
   const loadData = async () => {
     setLoading(true)
     try {
-      // Build URL with price filters
+      // Build URL with filters
       const params = new URLSearchParams()
       params.append('limit', '12')
       params.append('sort_by', sortBy)
       if (selectedCategory) params.append('category', selectedCategory)
       if (minPrice) params.append('min_price', minPrice)
       if (maxPrice) params.append('max_price', maxPrice)
+      
+      // Add location filter if city is selected
+      if (selectedCity) {
+        const coords = getCityCoordinates(selectedCity)
+        if (coords) {
+          params.append('lat', coords.lat.toString())
+          params.append('lng', coords.lng.toString())
+          params.append('radius', (parseFloat(radius) * 1000).toString()) // Convert km to meters
+        }
+      }
 
       // Load latest listings with sorting and filtering
       const listingsUrl = selectedCategory 
@@ -126,6 +139,54 @@ export const HomePage: React.FC = () => {
               onClick={() => {
                 setMinPrice('')
                 setMaxPrice('')
+              }}
+            >
+              Clear
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div className="location-filter-section">
+        <h3>📍 Filter by Location & Distance</h3>
+        <div className="location-filter-controls">
+          <div className="location-input-group">
+            <label htmlFor="city-select">City</label>
+            <select
+              id="city-select"
+              className="input city-select"
+              value={selectedCity}
+              onChange={(e) => setSelectedCity(e.target.value)}
+            >
+              <option value="">All Cities</option>
+              {getCityNames().map((city) => (
+                <option key={city} value={city}>
+                  {city}
+                </option>
+              ))}
+            </select>
+          </div>
+          {selectedCity && (
+            <div className="radius-input-group">
+              <label htmlFor="radius-input">Radius (km)</label>
+              <input
+                id="radius-input"
+                type="number"
+                className="input radius-input"
+                placeholder="10"
+                value={radius}
+                onChange={(e) => setRadius(e.target.value)}
+                min="1"
+                max="50"
+              />
+            </div>
+          )}
+          {selectedCity && (
+            <button
+              className="btn btn-secondary btn-clear-filter"
+              onClick={() => {
+                setSelectedCity('')
+                setRadius('10')
               }}
             >
               Clear
